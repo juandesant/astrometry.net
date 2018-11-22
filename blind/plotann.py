@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 # This file is part of the Astrometry.net suite.
 # Licensed under a 3-clause BSD style license - see LICENSE
+from __future__ import print_function
 import sys
 import os
 from optparse import OptionParser
@@ -28,16 +29,12 @@ def match_kdtree_catalog(wcs, catfn):
     kd2 = tree_build_radec(np.array([rc]), np.array([dc]))
     r = deg2dist(rr)
     I,J,nil = trees_match(kd, kd2, r, permuted=False)
-    # HACK
-    #I2,J,d = trees_match(kd, kd2, r)
-    xyz = spherematch_c.kdtree_get_positions(kd, I.astype(np.uint32))
-    #print 'I', I
-    I2 = tree_permute(kd, I)
-    #print 'I2', I2
-    tree_free(kd2)
-    tree_close(kd)
+    del kd2
+    xyz = kd.get_data(I.astype(np.uint32))
+    I = kd.permute(I)
+    del kd
     tra,tdec = xyztoradec(xyz)
-    return tra, tdec, I2
+    return tra, tdec, I
     
 
 def get_annotations(wcs, opt):
@@ -138,7 +135,7 @@ def get_annotations_for_wcs(wcs, opt):
         for r,d,n1,n2,vmag in zip(T.ra, T.dec, T.name1, T.name2, T.vmag):
             if not wcs.is_inside(r, d):
                 continue
-            print 'Bright-star catalog:', n1, n2
+            #print('Bright-star catalog:', n1, n2)
             names = []
             n1 = n1.strip()
             if len(n1):
@@ -196,6 +193,7 @@ def get_empty_opts():
     opt.ngcnames = None
     opt.iccat = None
     opt.hipcat = None
+    opt.hiplabel = False
     return opt
 
 if __name__ == '__main__':
@@ -239,6 +237,11 @@ if __name__ == '__main__':
     parser.add_option('--target', '-t', dest='target', action='append',
                       default=[],
                       help='Add named target (eg "M 31", "NGC 1499")')
+
+    parser.add_option('--target-rd', '-T', dest='targetrd', nargs=3, action='append',
+                      default=[],
+                      help='Add a custom target with RA,Dec (eg, "-T \'My Star\' 34.33 0.87"')
+
     parser.add_option('--no-grid', dest='grid', action='store_false',
                       default=True, help='Turn off grid lines')
     parser.add_option('--grid-size', dest='gridsize', type=float,
@@ -261,7 +264,7 @@ if __name__ == '__main__':
                       help='Text vertical alignment')
     parser.add_option('--tox', dest='tox', default=0, type=float,
                       help='Text offset x')
-    parser.add_option('--toy', dest='toy', default=0, type=float,
+    parser.add_option('--toy', dest='toy', default=-10, type=float,
                       help='Text offset y')
     parser.add_option('--lw', dest='lw', default=2, type=float,
                       help='Annotations line width')
@@ -309,7 +312,7 @@ if __name__ == '__main__':
         jobjs = get_annotations_for_wcs(wcs, opt)
         import json
         j = json.dumps(jobjs)
-        print j
+        print(j)
         sys.exit(0)
 
     fmt = PLOTSTUFF_FORMAT_JPG
@@ -353,7 +356,7 @@ if __name__ == '__main__':
     if opt.pastel:
         ann.constellation_pastel = True
         ann.bright_pastel = True
-        print ann.constellation_pastel
+        #print(ann.constellation_pastel)
     if opt.hdcat:
         ann.HD = True
         ann.HD_labels = True
@@ -376,7 +379,27 @@ if __name__ == '__main__':
         for t in opt.target:
             if plot_annotations_add_named_target(ann, t):
                 raise RuntimeError('Unknown target', t)
-
+    # if you want to plot normal vs named targets differently:
+    # plot.plot('annotations')
+    # ann.clear_targets()
+    # ann.NGC = False
+    # ann.constellations = False
+    # ann.bright = False
+    # ann.HD = False
+    # plot.color = 'red'
+    if len(opt.targetrd):
+        for name,ra,dec in opt.targetrd:
+            try:
+                ra = float(ra)
+            except:
+                print('Failed to parse RA string as float:', ra)
+                raise
+            try:
+                dec = float(dec)
+            except:
+                print('Failed to parse Dec string:', dec)
+                raise
+            ann.add_target(ra, dec, name)
     plot.plot('annotations')
 
     for rdfn in opt.rd:

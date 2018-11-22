@@ -13,17 +13,20 @@ import threading
 import time
 import os
 
-try:
-    # py2
-    import cPickle as pickle
-    import Queue as queue
-    Connection = _multiprocessing.Connection
-except:
+import sys
+py3 = (sys.version_info[0] >= 3)
+
+if py3:
     # py3 loads cPickle if available
     import pickle
     # py3 renames Queue to queue
     import queue
     Connection = multiprocessing.connection.Connection
+else:
+    # py2
+    import cPickle as pickle
+    import Queue as queue
+    Connection = _multiprocessing.Connection
 
 from astrometry.util.ttime import CpuMeas
 
@@ -38,7 +41,6 @@ TimingPoolMeas, that records & reports the pool's worker CPU time.
     dpool = TimingPool(4, taskqueuesize=4)
     dmup = multiproc.multiproc(pool=dpool)
     Time.add_measurement(TimingPoolMeas(dpool))
-
 '''
 
 #
@@ -122,16 +124,18 @@ class TimingConnection():
     def poll(self):
         return self.real.poll()
 
+    # called by py2 (multiprocessing.queues.Queue.get())
     def recv(self):
-        bytes = self.real.recv_bytes()
+        bb = self.real.recv_bytes()
         t0 = time.time()
-        obj = pickle.loads(bytes)
+        obj = pickle.loads(bb)
         dt = time.time() - t0
-        self.upbytes += len(bytes)
+        self.upbytes += len(bb)
         self.uptime += dt
         self.upobjs += 1
         return obj
 
+    # called by py2
     def send(self, obj):
         t0 = time.time()
         s = pickle.dumps(obj, -1)
@@ -141,6 +145,21 @@ class TimingConnection():
         self.pobjs += 1
         return self.real.send_bytes(s)
 
+    # called by py3 (multiprocessing.queues.Queue.get())
+    def recv_bytes(self):
+        bb = self.real.recv_bytes()
+        self.upbytes += len(bb)
+        #self.uptime += ... unpickled by the Queue
+        self.upobjs += 1
+        return bb
+    
+    # called by py3
+    def send_bytes(self, bb):
+        self.pbytes += len(bb)
+        #self.ptime += 
+        self.pobjs += 1
+        return self.real.send_bytes(bb)
+    
     def close(self):
         return self.real.close()
 
@@ -367,7 +386,7 @@ def timing_handle_tasks(taskqueue, put, outqueue, progressqueue, pool,
                         (job,i,pid) = progressqueue.get()
                         # print 'Job', job, 'element', i, 'pid', pid, 'started'
                         nqueued -= 1
-                    except IOError:
+                    except (IOError, EOFError):
                         break
 
         else:
@@ -401,7 +420,7 @@ def timing_handle_tasks(taskqueue, put, outqueue, progressqueue, pool,
             (job,i,pid) = progressqueue.get()
             # print 'Job', job, 'element', i, 'pid', pid, 'started'
             nqueued -= 1
-        except IOError:
+        except (IOError,EOFError):
             pass
     # print 'Task thread done.'
     
@@ -446,24 +465,32 @@ class TimingPoolMeas(object):
     '''
     def __init__(self, pool, pickleTraffic=True):
         self.pool = pool
+        self.nproc = pool._processes
         self.pickleTraffic = pickleTraffic
     def __call__(self):
-        return TimingPoolTimestamp(self.pool, self.pickleTraffic)
+        return TimingPoolTimestamp(self.pool, self.pickleTraffic, self.nproc)
 
 class TimingPoolTimestamp(object):
     '''
     The current resources used by a pool of workers, for
     astrometry.util.ttime
     '''
-    def __init__(self, pool, pickleTraffic):
+    def __init__(self, pool, pickleTraffic, nproc):
         self.pool = pool
-        self.t0 = self.now(pickleTraffic)
+        self.nproc = nproc
+        self.t = self.now(pickleTraffic)
+        self.cpu = CpuMeas()
     def format_diff(self, other):
-        t1 = self.t0
-        t0 = other.t0
-        s = ('%.3f s worker CPU, %.3f s worker Wall' %
-             tuple(t1[k] - t0[k] for k in ['worker_cpu', 'worker_wall']))
-        if 'pickle_objs' in self.t0:
+        t1 = self.t
+        t0 = other.t
+        wall = self.cpu.wall_seconds_since(other.cpu)
+        main_cpu = self.cpu.cpu_seconds_since(other.cpu)
+        worker_cpu = t1['worker_cpu'] - t0['worker_cpu']
+        worker_wall = t1['worker_wall'] - t0['worker_wall']
+        use = (main_cpu + worker_cpu) / wall
+        s = ('%.3f s worker CPU, %.3f s worker Wall, Wall: %.3f s, Cores in use: %.2f, Total efficiency (on %i cores): %.1f %%' %
+             (worker_cpu, worker_wall, wall, use, self.nproc, 100.*use / float(self.nproc)))
+        if 'pickle_objs' in self.t:
             s += (', pickled %i/%i objs, %.1f/%.1f MB' %
                   tuple(t1[k] - t0[k] for k in [
                         'pickle_objs', 'unpickle_objs',
@@ -528,61 +555,11 @@ class TimingPool(multiprocessing.pool.Pool):
             w.start()
             debug('added worker')
 
-    def map(self, func, iterable, chunksize=None):
-        '''
-        Equivalent of `map()` builtin
-        '''
-        assert(self._state == multiprocessing.pool.RUN)
-        async = self.map_async(func, iterable, chunksize)
-        while True:
-            try:
-                #print('map: waiting for map_async result...')
-                res = async.get(1)
-                #print('map: got async result')
-                return res
-            except multiprocessing.TimeoutError:
-                #print('map: timeout waiting for async result.')
-                continue
-
-    def map_async(self, func, iterable, chunksize=None, callback=None):
-        '''
-        Asynchronous equivalent of `map()` builtin
-        '''
-        assert(self._state == multiprocessing.pool.RUN)
-        if not hasattr(iterable, '__len__'):
-            iterable = list(iterable)
-
-        if chunksize is None:
-            chunksize, extra = divmod(len(iterable), len(self._pool) * 4)
-            if extra:
-                chunksize += 1
-        if len(iterable) == 0:
-            chunksize = 0
-
-        result = multiprocessing.pool.MapResult(self._cache, chunksize, len(iterable), callback)
-        mapstar = multiprocessing.pool.mapstar
-        #print 'chunksize', chunksize
-        #print 'Submitting job:', result._job
-        #print 'Result:', result
-        
-        if chunksize == 1:
-            self._taskqueue.put((((result._job, i, map, (func,(x,)), {})
-                                  for i, x in enumerate(iterable)), None))
-
-        else:
-            task_batches = multiprocessing.pool.Pool._get_tasks(func, iterable, chunksize)
-            self._taskqueue.put((((result._job, i, mapstar, (x,), {})
-                                  for i, x in enumerate(task_batches)), None))
-        return result
-            
-            
-
-    
     # This is just copied from the superclass; we call our routines:
     #  -handle_results -> timing_handle_results
     # And add _beancounter.
     def __init__(self, processes=None, initializer=None, initargs=(),
-                 maxtasksperchild=None, taskqueuesize=0):
+                 maxtasksperchild=None, taskqueuesize=0, context=None):
         '''
         taskqueuesize: maximum number of tasks to put on the queue;
           this is actually done by keeping a progressqueue, written-to
@@ -595,6 +572,13 @@ class TimingPool(multiprocessing.pool.Pool):
           implemented via pipes with unknown, OS-controlled capacity
           in units of bytes.)
         '''
+        if context is None:
+            # py3
+            import multiprocessing.pool
+            if 'get_context' in dir(multiprocessing.pool):
+                context = multiprocessing.pool.get_context()
+        self._ctx = context
+
         self._beancounter = BeanCounter()
         self._setup_queues()
         self._taskqueue = queue.Queue()
@@ -666,21 +650,6 @@ class TimingPool(multiprocessing.pool.Pool):
             exitpriority=15
             )
 
-
-# class iterwrapper(object):
-#     def __init__(self, y, n):
-#         self.n = n
-#         self.y = y
-#     def __str__(self):
-#         return 'iterwrapper: n=%i; ' % self.n + self.y
-#     def __iter__(self):
-#         return self
-#     def next(self):
-#         return self.y.next()
-#     def __len__(self):
-#         return self.n
-    
-
 if __name__ == '__main__':
 
     import sys
@@ -699,6 +668,16 @@ if __name__ == '__main__':
         print('Done work', i)
         return i
         
+    def realwork(i):
+        print('Doing work', i)
+        import numpy as np
+        X = 0
+        for j in range(100 - 10*i):
+            #print('work', i, j)
+            X = X + np.random.normal(size=(1000,1000))
+        print('Done work', i)
+        return i
+    
     class ywrapper(object):
         def __init__(self, y, n):
             self.n = n
@@ -708,10 +687,10 @@ if __name__ == '__main__':
         def __iter__(self):
             return self
         def next(self):
-            return self.y.next()
+            return next(self.y)
         def __len__(self):
             return self.n
-
+        __next__ = next
     def yielder(n):
         for i in range(n):
             print('Yielding', i)
@@ -725,8 +704,29 @@ if __name__ == '__main__':
     dmup = multiproc.multiproc(pool=dpool)
     Time.add_measurement(TimingPoolMeas(dpool))
 
+    # t0 = Time()
+    # res = dmup.map(work, args)
+    # print(Time()-t0)
+    # print('Got result:', res)
+
+    N = 20
+    y = yielder(N)
+    args = ywrapper(y, N)
     t0 = Time()
-    res = dmup.map(work, args)
+    print('Doing real work...')
+    res = dmup.map(realwork, args)
     print(Time()-t0)
     print('Got result:', res)
     
+    # Test taskqueuesize=1
+    dpool = TimingPool(4, taskqueuesize=1)
+    dmup = multiproc.multiproc(pool=dpool)
+    Time.add_measurement(TimingPoolMeas(dpool))
+    N = 20
+    y = yielder(N)
+    args = ywrapper(y, N)
+    t0 = Time()
+    print('Doing real work...')
+    res = dmup.map(realwork, args)
+    print(Time()-t0)
+    print('Got result:', res)

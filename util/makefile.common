@@ -9,14 +9,24 @@ INSTALL_DIR ?= /usr/local/astrometry
 # Put INSTALL_DIR in the environment of commands run by Make.
 export INSTALL_DIR
 
+# don't change this one -- it must match what is in the bin/* scripts.
+PYTHON_SCRIPT_DEFAULT := /usr/bin/env python
+
+# change this if you want to set exactly which python program gets run to
+# execute the python scripts in bin/ (image2pnm and friends).
+# Note that this must be a full path (this is a bash requirement).
+PYTHON_SCRIPT ?= $(PYTHON_SCRIPT_DEFAULT)
+# eg,
+#PYTHON_SCRIPT ?= /usr/bin/python3.5
+
 # Installation subdirs
 
-PY_BASE_INSTALL_DIR := $(INSTALL_DIR)/lib/python/astrometry
+PY_BASE_INSTALL_DIR ?= $(INSTALL_DIR)/lib/python/astrometry
 INCLUDE_INSTALL_DIR := $(INSTALL_DIR)/include/astrometry
 LIB_INSTALL_DIR := $(INSTALL_DIR)/lib
 BIN_INSTALL_DIR := $(INSTALL_DIR)/bin
 DATA_INSTALL_DIR := $(INSTALL_DIR)/data
-PY_BASE_LINK_DIR := ../lib/python/astrometry
+PY_BASE_LINK_DIR ?= ../lib/python/astrometry
 ETC_INSTALL_DIR ?= $(INSTALL_DIR)/etc
 MAN1_INSTALL_DIR ?= $(INSTALL_DIR)/share/man/man1
 DOC_INSTALL_DIR ?= $(INSTALL_DIR)/doc
@@ -75,6 +85,12 @@ SED ?= sed
 
 MV ?= mv
 
+CP ?= cp
+
+CHMOD_EXECUTABLE ?= chmod 755
+
+MKDIR ?= mkdir -p
+
 FLAGS_DEF := -g -Wall
 
 TMPFILE := cc-out.tmp
@@ -109,8 +125,9 @@ ifneq (CYGWIN,$(findstring CYGWIN,$(UNAME)))
   SHAREDLIBFLAGS_DEF += -fPIC
 endif 
 
-# Get the library suffix used by python distutils (.dll on cygwin, .so elsewhere)
-PYTHON_SO_EXT ?= $(shell $(PYTHON) -c "from distutils import sysconfig; print sysconfig.get_config_var('SO')")
+# Get the library suffix used by python distutils (.dll on cygwin, .so elsewhere for py2; .PLATFORM.so for py3)
+PYTHON_SO_EXT ?= $(shell $(PYTHON) -c "from distutils import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX') or sysconfig.get_config_var('SO'))")
+
 # Set a default, otherwise terrible things happen:
 #   in util/Makefile : clean: rm -f *$(PYTHON_SO_EXT)
 ifeq ($(PYTHON_SO_EXT)x,x)

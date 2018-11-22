@@ -1,3 +1,4 @@
+from __future__ import print_function
 import shutil
 import os, errno
 import hashlib
@@ -5,13 +6,17 @@ import tempfile
 import math
 import urllib
 import urllib2
-import PIL.Image
 import stat
 import time
 from datetime import datetime, timedelta
 
+if __name__ == '__main__':
+    os.environ['DJANGO_SETTINGS_MODULE'] = 'astrometry.net.settings'
+    import django
+    django.setup()
+
 from django.http import HttpResponse, HttpResponseRedirect, HttpResponseBadRequest, QueryDict, StreamingHttpResponse
-from django.shortcuts import render_to_response, get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.template import Context, RequestContext, loader
 from django.contrib.auth.decorators import login_required
 from django import forms
@@ -32,7 +37,8 @@ from astrometry.net.models import License
 
 from astrometry.net.views.comment import *
 from astrometry.net.views.license import *
-from astrometry.net.util import get_page, get_session_form, NoBulletsRenderer
+from astrometry.net.util import get_page, get_session_form
+from astrometry.net.util import NoBulletsRadioSelect
 from astrometry.net.views.tag import TagForm, TagSearchForm
 from astrometry.net.views.license import LicenseForm
 
@@ -62,7 +68,7 @@ class UserImageForm(forms.ModelForm):
         )
         widgets = {
             'description': forms.Textarea(attrs={'cols':60,'rows':3}),
-            'publicly_visible': forms.RadioSelect(renderer=NoBulletsRenderer),
+            'publicly_visible': NoBulletsRadioSelect(),
         }
 
     def __init__(self, user, *args, **kwargs):
@@ -90,8 +96,8 @@ def user_image(req, user_image_id=None):
 
     images = {}
     dim = uimage.image.get_display_image()
-    images['original_display'] = reverse('astrometry.net.views.image.serve_image', kwargs={'id':dim.id})
-    images['original'] = reverse('astrometry.net.views.image.serve_image', kwargs={'id':uimage.image.id})
+    images['original_display'] = reverse('serve_image', kwargs={'id':dim.id})
+    images['original'] = reverse('serve_image', kwargs={'id':uimage.image.id})
     image_type = 'original'
     if job:
         if job.calibration:
@@ -103,11 +109,11 @@ def user_image(req, user_image_id=None):
             images['galex'] = reverse('galex_image', kwargs={'calid':job.calibration.id,'size':'full'})
             images['redgreen_display'] = reverse('red_green_image', kwargs={'job_id':job.id,'size':'display'})
             images['redgreen'] = reverse('red_green_image', kwargs={'job_id':job.id,'size':'full'})
-            images['enhanced_display'] = reverse('enhanced_image', kwargs={'job_id':job.id,'size':'display'})
-            images['enhanced'] = reverse('enhanced_image', kwargs={'job_id':job.id,'size':'full'})
+            #images['enhanced_display'] = reverse('enhanced_image', kwargs={'job_id':job.id,'size':'display'})
+            #images['enhanced'] = reverse('enhanced_image', kwargs={'job_id':job.id,'size':'full'})
             image_type = 'annotated'
-        images['extraction_display'] = reverse('astrometry.net.views.image.extraction_image', kwargs={'job_id':job.id,'size':'display'})
-        images['extraction'] = reverse('astrometry.net.views.image.extraction_image', kwargs={'job_id':job.id,'size':'full'})
+        images['extraction_display'] = reverse('extraction_image', kwargs={'job_id':job.id,'size':'display'})
+        images['extraction'] = reverse('extraction_image', kwargs={'job_id':job.id,'size':'full'})
 
     image_type = req.GET.get('image', image_type)
     if image_type in images:
@@ -124,7 +130,28 @@ def user_image(req, user_image_id=None):
         ]
     else:
         selected_flags = None
+
+    if job and job.calibration:
+        parity = (calib.get_parity() < 0)
+        wcs = calib.raw_tan
+        if calib.tweaked_tan is not None:
+            wcs = calib.tweaked_tan
+        imgurl   = req.build_absolute_uri(images['original'])
+        thumburl = req.build_absolute_uri(images['original_display'])
+
+        fits = uimage.image.disk_file.is_fits_image()
+        y = wcs.imageh - wcs.crpix2
+        orient = wcs.get_orientation()
+
+        print('Parity', parity, 'FITS', fits, 'Orientation', orient)
+
+        if parity:
+            orient = 360. - orient
         
+        wwturl = 'http://www.worldwidetelescope.org/wwtweb/ShowImage.aspx?reverseparity=%s&scale=%.6f&name=%s&imageurl=%s&credits=Astrometry.net+User+(All+Rights+Reserved)&creditsUrl=&ra=%.6f&dec=%.6f&x=%.1f&y=%.1f&rotation=%.2f&thumb=%s' % (parity, wcs.get_pixscale(), uimage.original_file_name, imgurl, wcs.crval1, wcs.crval2, wcs.crpix1, y, orient, thumburl)
+    else:
+        wwturl = None
+    
     logmsg(uimage.get_absolute_url())
     context = {
         'request': req,
@@ -141,6 +168,7 @@ def user_image(req, user_image_id=None):
         'image_type': image_type,
         'flags': flags,
         'selected_flags': selected_flags,
+        'wwt_url': wwturl,
     }
 
     if uimage.is_public() or (req.user.is_authenticated() and uimage.user == req.user):
@@ -150,8 +178,7 @@ def user_image(req, user_image_id=None):
     else:
         messages.error(req, "Sorry, you don't have permission to view this content.")
         template = 'user_image/permission_denied.html'
-    return render_to_response(template, context,
-        context_instance = RequestContext(req))
+    return render(req, template, context)
 
 @login_required
 def edit(req, user_image_id=None):
@@ -278,8 +305,8 @@ def annotated_image(req, jobid=None, size='full'):
     if rad > 10:
         args.append('--no-ngc')
 
-	if rad > 30:
-		args.append('--no-bright')
+    if rad > 30:
+        args.append('--no-bright')
             
     cmd = ' '.join(args + ['%s %s %s' % (wcsfn, pnmfn, annfn)])
 
@@ -322,9 +349,13 @@ def onthesky_image(req, zoom=None, calid=None):
     cal = get_object_or_404(Calibration, pk=calid)
     wcsfn = cal.get_wcs_file()
     plotfn = get_temp_file()
+
+    print('onthesky_image: cal', cal, 'wcs', wcsfn, 'plot', plotfn)
+
     #
     wcs = anutil.Tan(wcsfn, 0)
     zoom = int(zoom)
+
     if zoom == 0:
         zoom = wcs.radius() < 15.
         plot_aitoff_wcs_outline(wcsfn, plotfn, zoom=zoom)
@@ -389,25 +420,51 @@ def sdss_image(req, calid=None, size='full'):
     if df is None:
         wcsfn = cal.get_wcs_file()
         plotfn = get_temp_file()
+
+        from astrometry.util.util import Tan
+        wcs = Tan(wcsfn)
+        
         if size == 'display':
             image = cal.job.user_image
             scale = float(image.image.get_display_image().width)/image.image.width
+            wcs = wcs.scale(scale)
+
         else:
             scale = 1.0
-        plot_sdss_image(wcsfn, plotfn, scale)
+        
+        urlargs = urllib.urlencode(dict(crval1='%.6f' % wcs.crval[0],
+                                        crval2='%.6f' % wcs.crval[1],
+                                        crpix1='%.2f' % wcs.crpix[0],
+                                        crpix2='%.2f' % wcs.crpix[1],
+                                        cd11='%.6g' % wcs.cd[0],
+                                        cd12='%.6g' % wcs.cd[1],
+                                        cd21='%.6g' % wcs.cd[2],
+                                        cd22='%.6g' % wcs.cd[3],
+                                        imagew='%i' % int(wcs.imagew),
+                                        imageh='%i' % int(wcs.imageh)))
+        url = 'http://legacysurvey.org/viewer-dev/sdss-wcs/?' + urlargs
+        return HttpResponseRedirect(url)
+        #print('Retrieving:', url)
+        #f = urllib.urlopen(url)
+        plotfn,headers = urllib.urlretrieve(url, plotfn)
+        #print('Headers:', headers)
+
+        #plot_sdss_image(wcsfn, plotfn, scale)
+
         # cache
         logmsg('Caching key "%s"' % key)
         df = CachedFile.add(key, plotfn)
     else:
-        logmsg('Cache hit for key "%s"' % key)
+        logmsg('Cache hit for key "%s" -> %s' % (key, df.get_path()))
     f = open(df.get_path())
     res = HttpResponse(f)
-    res['Content-Type'] = 'image/png'
+    res['Content-Type'] = 'image/jpeg'
     return res
 
 def red_green_image(req, job_id=None, size='full'):
     job = get_object_or_404(Job, pk=job_id)
     ui = job.user_image
+    sub = ui.submission
     img = ui.image
     if size == 'display':
         scale = float(img.get_display_image().width)/img.width
@@ -435,6 +492,10 @@ def red_green_image(req, job_id=None, size='full'):
         pimg.format = PLOTSTUFF_FORMAT_PPM
         plot.color = 'white'
         plot.alpha = 1.
+        if sub.use_sextractor:
+            xy = plot.xy
+            xy.xcol = 'X_IMAGE'
+            xy.ycol = 'Y_IMAGE'
         plot.plot('image')
 
         # plot red
@@ -582,7 +643,7 @@ def index(req, images=None,
         calibrated = form.cleaned_data.get('calibrated')
         processing = form.cleaned_data.get('processing')
         failed = form.cleaned_data.get('failed')
-        
+
     stats = ['S', 'F', '']
     if calibrated is False:
         stats.remove('S')
@@ -593,7 +654,8 @@ def index(req, images=None,
     if len(stats) < 3:
         images = images.filter(jobs__status__in=stats)
     #print 'index 1:', images.query
-    images = images.order_by('-submission__submitted_on')
+    # the public_only() view already sorts them
+    #images = images.order_by('-submission__submitted_on')
     #print 'index 2:', images.query
     page_number = req.GET.get('page', 1)
     page = get_page(images, 27, page_number)
@@ -708,9 +770,7 @@ def index_by_user(req):
     context = {
         'users':User.objects.all_visible().order_by('profile__display_name', 'id')
     }
-    return render_to_response('user_image/index_by_user.html',
-        context,
-        context_instance = RequestContext(req))
+    return render(req, 'user_image/index_by_user.html', context)
         
 def index_album(req, album_id=None):
     album = get_object_or_404(Album, pk=album_id)
@@ -745,9 +805,7 @@ def image_set(req, category, id):
         'image_set_title':image_set_title,
     }
    
-    return render_to_response('user_image/image_set.html',
-        context,
-        context_instance = RequestContext(req))
+    return render(req, 'user_image/image_set.html', context)
 
 def wcs_file(req, jobid=None):
     job = get_object_or_404(Job, pk=jobid)
@@ -815,6 +873,7 @@ def new_fits_file(req, jobid=None):
     return res
 
 def kml_file(req, jobid=None):
+    import PIL.Image
     job = get_object_or_404(Job, pk=jobid)
     wcsfn = job.get_wcs_file()
     img = job.user_image.image
@@ -830,14 +889,15 @@ def kml_file(req, jobid=None):
     kmlfn = 'doc.kml'
     outfn = get_temp_file()
     cmd = ('cd %(dirnm)s'
-           '; /usr/local/wcs2kml/bin/wcs2kml ' 
+           '; %(wcs2kml)s ' 
            '--input_image_origin_is_upper_left '
            '--fitsfile=%(wcsfn)s '
            '--imagefile=%(imgfn)s '
            '--kmlfile=%(kmlfn)s '
            '--outfile=%(warpedimgfn)s '
            '; zip -j - %(warpedimgfn)s %(kmlfn)s > %(outfn)s ' %
-           dict(dirnm=dirnm, wcsfn=wcsfn, imgfn=imgfn, kmlfn=kmlfn, 
+           dict(dirnm=dirnm, wcsfn=wcsfn, imgfn=imgfn, kmlfn=kmlfn,
+                wcs2kml=settings.WCS2KML,
                 warpedimgfn=warpedimgfn, outfn=outfn))
     logmsg('Running: ' + cmd)
     (rtn, out, err) = run_command(cmd)
@@ -887,13 +947,13 @@ def unhide(req, user_image_id):
     image = get_object_or_404(UserImage, pk=user_image_id)
     if req.user.is_authenticated and req.user == image.user:
         image.unhide()
-    return redirect('astrometry.net.views.image.user_image', user_image_id)
+    return redirect('user_image', user_image_id)
     
 def hide(req, user_image_id):
     image = get_object_or_404(UserImage, pk=user_image_id)
     if req.user.is_authenticated and req.user == image.user:
         image.hide()
-    return redirect('astrometry.net.views.image.user_image', user_image_id)
+    return redirect('user_image', user_image_id)
     
 def search(req):
     if req.GET:
@@ -981,6 +1041,12 @@ def search(req):
     context.update({'form': form,
                     'search_category': category,
                     'image_page': page})
-    return render_to_response('user_image/search.html',
-        context,
-        context_instance = RequestContext(req))
+    return render(req, 'user_image/search.html', context)
+
+
+if __name__ == '__main__':
+    class Duck(object):
+        pass
+    req = Duck()
+    onthesky_image(req, zoom=0, calid=1)
+    

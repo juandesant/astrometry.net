@@ -205,6 +205,10 @@ $(document).ready(function() {
             <td>KMZ (<a href="http://www.google.com/sky/">Google Sky</a>):</td>
             <td><a href="{% url 'kml-file' jobid=job.id %}?ignore=.kmz">image.kmz</a></td>
         </tr>
+        <tr>
+          <td>World Wide Telescope:</td>
+          <td><a href="{{ wwt_url }}">view in WorldWideTelescope</a></td>
+	</tr>
         </table>
         <br />
 
@@ -241,7 +245,7 @@ $(document).ready(function() {
 <div id="left_block">
     {% if user == image.user %}
     <div>
-        <a href="{% url 'astrometry.net.views.image.edit' user_image_id=image.id %}">Edit Image</a>
+        <a href="{% url 'image_edit' user_image_id=image.id %}">Edit Image</a>
         <hr />
     </div>
     {% endif %}
@@ -255,8 +259,10 @@ $(document).ready(function() {
                     <a href="?image=redgreen" title="redgreen" class="image_link">red-green</a> |
                     <a href="?image=annotated" title="annotated" class="image_link">annotated</a> |
                     <a href="?image=sdss" title="sdss" class="image_link">SDSS</a> |
+		    {% comment %}
                     <a href="?image=galex" title="galex" class="image_link">GALEX</a> |
                     <a href="?image=enhanced" title="enhanced" class="image_link">Enhance!</a> |
+		    {% endcomment %}
                     <a href="?image=extraction" title="extraction" class="image_link">extraction</a>
                     {% else %}
                         {% if job %}

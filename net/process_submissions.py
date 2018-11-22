@@ -1,34 +1,34 @@
 #! /usr/bin/env python
 from __future__ import print_function
+from __future__ import absolute_import
 
 import os
 import sys
 
 # add .. to PYTHONPATH
 path = os.path.realpath(__file__)
-print('My path', path)
+#print('My path', path)
 basedir = os.path.dirname(os.path.dirname(path))
 
 #print('PYTHONPATH is', os.environ['PYTHONPATH'])
 
-print('Adding basedir', basedir, 'to PYTHONPATH')
+#print('Adding basedir', basedir, 'to PYTHONPATH')
 sys.path.append(basedir)
 
 # add ../blind and ../util to PATH
 os.environ['PATH'] += ':' + os.path.join(basedir, 'blind')
 os.environ['PATH'] += ':' + os.path.join(basedir, 'util')
 
-print('sys.path is:')
-for x in sys.path:
-    print('  ', x)
-
-print('PATH is:', os.environ['PATH'])
+# print('sys.path is:')
+# for x in sys.path:
+#     print('  ', x)
+# 
+# print('PATH is:', os.environ['PATH'])
 
 os.environ['DJANGO_SETTINGS_MODULE'] = 'astrometry.net.settings'
 
 import django
 django.setup()
-
 
 try:
     import pyfits
@@ -75,10 +75,11 @@ settings.LOGGING['loggers'][''] = {
 from astrometry.net.models import *
 from log import *
 
-from django.utils.log import dictConfig
 from django.db.models import Count
 from django.db import DatabaseError
 from django.db.models import Q
+
+from logging.config import dictConfig
 
 dictConfig(settings.LOGGING)
 
@@ -176,9 +177,24 @@ def create_job_logger(job):
     logger.addHandler(fh)
     return MyLogger(logger)
 
-def try_dojob(job, userimage):
+def try_dojob(job, userimage, solve_command, solve_locally):
+    print('try_dojob', job)
     try:
-        return dojob(job, userimage)
+        return dojob(job, userimage, solve_command=solve_command,
+                     solve_locally=solve_locally)
+    except OSError as e:
+        import os.errno
+        # Too many open files
+        if e.errno == os.errno.EMFILE:
+            sys.exit(-1)
+    except IOError as e:
+        import errno
+        # Too many open files
+        print('Caught IOError')
+        print('Errno:', e.errno)
+        if e.errno == errno.EMFILE:
+            print('Too many open files!')
+            sys.exit(-1)
     except:
         print('Caught exception while processing Job', job)
         traceback.print_exc(None, sys.stdout)
@@ -190,7 +206,7 @@ def try_dojob(job, userimage):
         log.msg('Caught exception while processing Job', job.id)
         log.msg(traceback.format_exc(None))
 
-def dojob(job, userimage, log=None):
+def dojob(job, userimage, log=None, solve_command=None, solve_locally=None):
     jobdir = job.make_dir()
     #print('Created job dir', jobdir)
     #log = create_job_logger(job)
@@ -297,28 +313,57 @@ def dojob(job, userimage, log=None):
     logfn = job.get_log_file()
     # the "tar" commands both use "-C" to chdir, and the ssh command
     # and redirect uses absolute paths.
-    cmd = ('(echo %(jobid)s; '
-           'tar cf - --ignore-failed-read -C %(jobdir)s %(axyfile)s) | '
-           'ssh -x -T %(sshconfig)s 2>>%(logfile)s | '
-           'tar xf - --atime-preserve -m --exclude=%(axyfile)s -C %(jobdir)s '
-           '>>%(logfile)s 2>&1' %
-           dict(jobid='job-%s-%i' % (settings.sitename, job.id),
-                axyfile=axyfn, jobdir=jobdir,
-                sshconfig=settings.ssh_solver_config,
-                logfile=logfn))
-    log.msg('command:', cmd)
-    w = os.system(cmd)
-    if not os.WIFEXITED(w):
-        log.msg('Solver failed (sent signal?)')
-        logmsg('Call to solver failed for job', job.id)
-        raise Exception
-    rtn = os.WEXITSTATUS(w)
-    if rtn:
-        log.msg('Solver failed with return value %i' % rtn)
-        logmsg('Call to solver failed for job', job.id, 'with return val', rtn)
-        raise Exception
 
-    log.msg('Solver completed successfully.')
+    if solve_locally is not None:
+
+        cmd = (('cd %(jobdir)s && %(solvecmd)s %(jobid)s %(axyfile)s >> ' +
+               '%(logfile)s') %
+               dict(jobid='job-%s-%i' % (settings.sitename, job.id),
+                    solvecmd=solve_locally,
+                    axyfile=axyfn, jobdir=jobdir,
+                    logfile=logfn))
+        log.msg('command:', cmd)
+        w = os.system(cmd)
+        if not os.WIFEXITED(w):
+            log.msg('Solver failed (sent signal?)')
+            logmsg('Call to solver failed for job', job.id)
+            raise Exception
+        rtn = os.WEXITSTATUS(w)
+        if rtn:
+            log.msg('Solver failed with return value %i' % rtn)
+            logmsg('Call to solver failed for job', job.id, 'with return val',
+                   rtn)
+            raise Exception
+
+        log.msg('Solver completed successfully.')
+
+    else:
+        if solve_command is None:
+            solve_command = 'ssh -x -T %(sshconfig)s'
+    
+        cmd = (('(echo %(jobid)s; '
+                'tar cf - --ignore-failed-read -C %(jobdir)s %(axyfile)s) | '
+                + solve_command + ' 2>>%(logfile)s | '
+                'tar xf - --atime-preserve -m --exclude=%(axyfile)s -C %(jobdir)s '
+                '>>%(logfile)s 2>&1') %
+               dict(jobid='job-%s-%i' % (settings.sitename, job.id),
+                    axyfile=axyfn, jobdir=jobdir,
+                    sshconfig=settings.ssh_solver_config,
+                    logfile=logfn))
+        log.msg('command:', cmd)
+        w = os.system(cmd)
+        if not os.WIFEXITED(w):
+            log.msg('Solver failed (sent signal?)')
+            logmsg('Call to solver failed for job', job.id)
+            raise Exception
+        rtn = os.WEXITSTATUS(w)
+        if rtn:
+            log.msg('Solver failed with return value %i' % rtn)
+            logmsg('Call to solver failed for job', job.id, 'with return val',
+                   rtn)
+            raise Exception
+    
+        log.msg('Solver completed successfully.')
 
     # Solved?
     wcsfn = os.path.join(jobdir, wcsfile)
@@ -631,7 +676,8 @@ def job_callback(result):
     print('Job callback: Result:', result)
 
 
-def main(dojob_nthreads, dosub_nthreads, refresh_rate, max_sub_retries):
+def main(dojob_nthreads, dosub_nthreads, refresh_rate, max_sub_retries,
+         solve_command, solve_locally):
     dojob_pool = None
     dosub_pool = None
     if dojob_nthreads > 1:
@@ -738,8 +784,13 @@ def main(dojob_nthreads, dosub_nthreads, refresh_rate, max_sub_retries):
 
         # FIXME -- order by user, etc
 
+
+        ## HACK -- order 'newuis' to do the newest ones first... helpful when there
+        # is a big backlog.
+        newuis = newuis.order_by('-submission__submitted_on')
+
         for sub in newsubs:
-            print('Enqueuing submission:', sub)
+            print('Enqueuing submission:', str(sub))
             sub.set_processing_started()
             sub.save()
 
@@ -766,11 +817,11 @@ def main(dojob_nthreads, dosub_nthreads, refresh_rate, max_sub_retries):
             qj.save()
 
             if dojob_pool:
-                res = dojob_pool.apply_async(try_dojob, (job, userimage),
+                res = dojob_pool.apply_async(try_dojob, (job, userimage, solve_command, solve_locally),
                                              callback=job_callback)
                 jobresults.append((job.id, res))
             else:
-                dojob(job, userimage)
+                dojob(job, userimage, solve_command=solve_command, solve_locally=solve_locally)
 
 if __name__ == '__main__':
     import optparse
@@ -783,6 +834,14 @@ if __name__ == '__main__':
                       default=20, help='Set the maximum number of times to retry processing a submission')
     parser.add_option('--refreshrate', '-r', dest='refreshrate', type='float',
                       default=5, help='Set how often to check for new jobs and submissions (in seconds)')
+
+    parser.add_option('--solve-command', default=None,
+                      help='Command to run instead of ssh to actually solve image, eg "testscript-astro"')
+
+    parser.add_option('--solve-locally',
+                      help='Command to run astrometry-engine on this machine, not via ssh')
+    
     opt,args = parser.parse_args()
 
-    main(opt.jobthreads, opt.subthreads, opt.refreshrate, opt.maxsubretries)
+    main(opt.jobthreads, opt.subthreads, opt.refreshrate, opt.maxsubretries,
+         opt.solve_command, opt.solve_locally)

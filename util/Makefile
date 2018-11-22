@@ -15,6 +15,12 @@ all:
 #   NO_QFITS := 1
 #   export NO_QFITS
 
+# Redefine these (to be in the current directory) before including
+# makefile.anfiles.
+ANBASE_LIB_FILE := libanbase.a
+ANUTILS_LIB_FILE := libanutils.a
+ANFILES_LIB_FILE := libanfiles.a
+
 include $(COMMON)/makefile.common
 include $(COMMON)/makefile.anfiles
 
@@ -35,12 +41,20 @@ ANUTILS_OBJ :=  sip-utils.o fit-wcs.o sip.o \
 ANFILES_DEPS :=
 ANFILES_OBJ := 
 
+# Things that it depends on but that aren't linked in
+ANUTILS_DEPS :=
+
 ifndef NO_QFITS
 ANFILES_OBJ += multiindex.o index.o codekd.o starkd.o rdlist.o xylist.o \
 	starxy.o qidxfile.o quadfile.o scamp.o scamp-catalog.o \
 	tabsort.o wcs-xy2rd.o wcs-rd2xy.o
 ANFILES_DEPS += $(QFITS_LIB)
+
+ANUTILS_OBJ += fitsioutils.o sip_qfits.o fitstable.o fitsbin.o fitsfile.o \
+	tic.o
+ANUTILS_DEPS += $(QFITS_LIB)
 endif
+
 
 SIMPLEXY_OBJ := dallpeaks.o dcen3x3.o dfind.o dmedsmooth.o dobjects.o \
 	dpeaks.o dselip.o dsigma.o dsmooth.o image2xy.o simplexy.o ctmf.o
@@ -50,10 +64,6 @@ include $(COMMON)/makefile.cairo
 include $(COMMON)/makefile.jpeg
 include $(COMMON)/makefile.png
 include $(COMMON)/makefile.netpbm
-
-ANBASE_LIB_FILE := libanbase.a
-ANUTILS_LIB_FILE := libanutils.a
-ANFILES_LIB_FILE := libanfiles.a
 
 # D'oh
 ifneq ($(MAKECMDGOALS),clean)
@@ -94,15 +104,12 @@ SHAREDLIBFLAGS := $(SHAREDLIBFLAGS_DEF)
 QFITS_UTILS := fits-column-merge subtable fitsgetext wcsinfo
 
 PROGS := an-fitstopnm an-pnmtofits downsample-fits \
-	fits-flip-endian hpsplit wcs-to-tan	query-starkd \
+	fits-flip-endian hpsplit wcs-to-tan	\
 	get-healpix $(QFITS_UTILS) pad-file wcs-match wcs-pv2sip
 
 MAIN_PROGS := wcs-resample tabsort wcs-xy2rd wcs-rd2xy fit-wcs wcs-pv2sip
 
 all: $(ANBASE_LIB_FILE) $(ANUTILS_LIB_FILE) $(ANFILES_LIB_FILE) $(PROGS) $(MAIN_PROGS)
-
-# Things that it depends on but that aren't linked in
-ANUTILS_DEPS :=
 
 # Actually there are ANFILES_H mixed in here too....
 ANUTILS_H := an-bool.h an-endian.h an-opts.h an-thread-pthreads.h \
@@ -120,12 +127,6 @@ ANUTILS_H := an-bool.h an-endian.h an-opts.h an-thread-pthreads.h \
 	tabsort.h wcs-rd2xy.h wcs-xy2rd.h wcs-pv2sip.h
 
 ANUTILS_H_PATH := $(addprefix $(INCLUDE_DIR)/,$(ANUTILS_H))
-
-ifndef NO_QFITS
-ANUTILS_OBJ += fitsioutils.o sip_qfits.o fitstable.o fitsbin.o fitsfile.o \
-	tic.o
-ANUTILS_DEPS += $(QFITS_LIB)
-endif
 
 ## ANFILES_DEPS, ANFILES_OBJ -- in makefile.anfiles
 
@@ -149,19 +150,15 @@ $(ANFILES_LIB_FILE): $(ANFILES_OBJ) $(ANFILES_DEPS)
 	$(AR) rc $@ $(ANFILES_OBJ)
 	$(RANLIB) $@
 
-$(MAIN_PROGS): %: %-main.o $(ANFILES_SLIB)
-$(PROGS): %: %.o $(ANFILES_SLIB)
+$(MAIN_PROGS): %: %-main.o rdlist.o xylist.o starxy.o $(ANUTILS_SLIB)
+$(PROGS): %: %.o $(ANUTILS_SLIB)
 
 DEP_OBJ += $(addsuffix -main.o,$(MAIN_PROGS))
 DEP_OBJ += $(addsuffix .o,$(PROGS))
 
-an-pnmtofits: an-pnmtofits.o $(ANFILES_SLIB)
+an-pnmtofits: an-pnmtofits.o $(ANUTILS_SLIB)
 	$(CC) -o $@ $(LDFLAGS) $^ $(NETPBM_LIB) $(LDLIBS)
 ALL_OBJ += an-pnmtofits.o
-
-wcs-pv2sip: wcs-pv2sip.o $(ANUTILS_SLIB)
-	$(CC) -o $@ $(LDFLAGS) $^ $(LDLIBS)
-ALL_OBJ += wcs-pv2sip.o
 
 _util$(PYTHON_SO_EXT): util.i lanczos.i $(ANFILES_SLIB)
 	LDFLAGS="$(LDFLAGS)" LDLIBS="$(LDLIBS)" SLIB="$(ANFILES_SLIB)" \
@@ -178,24 +175,22 @@ pyutil: $(PYUTIL)
 py: $(PYUTIL)
 .PHONY: py
 
-PYTHON_INSTALL := fits2fits.py image2pnm.py addpath.py \
+PYTHON_INSTALL := image2pnm.py addpath.py \
 	starutil.py starutil_numpy.py \
-	shell.py __init__.py file.py run_command.py w3c_validator.py \
+	shell.py __init__.py file.py run_command.py \
 	filetype.py fits.py fix_sdss_idr.py removelines.py \
-	uniformize.py lsstutils.py casjobs.py \
-	sdss_das.py sdss_filenames.py sdss_get_catalog.py sdss_noise.py \
-	sdss_psf.py sdss_psfield.py sqlcl.py \
+	uniformize.py casjobs.py \
 	usnob_catalog.py usnob_get_image.py usnob_get_region.py \
 	find_data_file.py plotshift.py plotutils.py miscutils.py multiproc.py \
-	yanny.py ttime.py resample.py \
-	EXIF.py degtohms.py hmstodeg.py horizons.py text2fits.py votabletofits.py \
-	imageutils.py merge-columns.py siap.py stages.py timingpool.py
+	ttime.py resample.py EXIF.py horizons.py \
+	imageutils.py siap.py stages.py timingpool.py
 
 # celestial_mechanics.py (needs license)
 
-PYTHON_EXECS := fits2fits.py image2pnm.py removelines.py uniformize.py \
-	degtohms.py hmstodeg.py text2fits.py votabletofits.py \
-	merge-columns.py
+PYTHON_DRIVERS := image2pnm removelines uniformize degtohms hmstodeg \
+	text2fits votabletofits merge-columns
+
+PYTHON_EXECS := $(addprefix ../bin/,$(PYTHON_DRIVERS))
 
 PY_INSTALL_DIR := $(PY_BASE_INSTALL_DIR)/util
 LINK_DIR := $(PY_BASE_LINK_DIR)/util
@@ -203,43 +198,55 @@ LINK_DIR := $(PY_BASE_LINK_DIR)/util
 install: install-core
 	$(MAKE) install-core
 	@echo "The following copy commands may fail; they are optional."
-	-$(MAKE) py && cp _util$(PYTHON_SO_EXT) util.py '$(PY_INSTALL_DIR)'
+	-$(MAKE) py && $(CP) _util$(PYTHON_SO_EXT) util.py '$(PY_INSTALL_DIR)'
 	@echo ok
 
 .PHONY: install
 
+pyinstall:
+	$(MKDIR) '$(PY_INSTALL_DIR)'
+	@for x in $(PYTHON_INSTALL); do \
+		echo $(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+	done
+	$(MAKE) py && $(CP) _util$(PYTHON_SO_EXT) util.py '$(PY_INSTALL_DIR)'
+
+.PHONY: pyinstall
 
 install-core: $(PYTHON_EXECS) $(PROGS) $(MAIN_PROGS) $(ANUTILS_H_PATH) \
 		$(ANFILES_LIB_FILE) $(ANUTILS_LIB_FILE) $(ANBASE_LIB_FILE)
 	@echo Installing in base directory '$(INSTALL_DIR)'
 	@echo Installing python in base directory '$(PY_INSTALL_DIR)'
-	mkdir -p '$(PY_INSTALL_DIR)'
+	$(MKDIR) '$(PY_INSTALL_DIR)'
 	@for x in $(PYTHON_INSTALL); do \
-		echo cp $$x '$(PY_INSTALL_DIR)/'$$x; \
-		cp $$x '$(PY_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
 	done
-	@echo Making symlinks in directory '$(BIN_INSTALL_DIR)'
-	mkdir -p '$(BIN_INSTALL_DIR)'
+	@echo Installing python scripts in directory '$(BIN_INSTALL_DIR)'
+	@echo PYTHON_SCRIPT executable: '$(PYTHON_SCRIPT)'
+	$(MKDIR) '$(BIN_INSTALL_DIR)'
 	@for x in $(PYTHON_EXECS); do \
-		echo ln -f -s '$(PY_INSTALL_DIR)/'$$x '$(BIN_INSTALL_DIR)/'$$x; \
-		ln -f -s '$(LINK_DIR)/'$$x '$(BIN_INSTALL_DIR)/'$$x; \
+		echo $(SED) 's+$(PYTHON_SCRIPT_DEFAULT)+$(PYTHON_SCRIPT)+' $$x > '$(BIN_INSTALL_DIR)/'$$x; \
+		$(SED) 's+$(PYTHON_SCRIPT_DEFAULT)+$(PYTHON_SCRIPT)+' $$x > '$(BIN_INSTALL_DIR)/'$$x; \
+		echo $(CHMOD_EXECUTABLE) '$(BIN_INSTALL_DIR)/'$$x; \
+		$(CHMOD_EXECUTABLE) '$(BIN_INSTALL_DIR)/'$$x; \
 	done
 	@echo Installing executables into '$(BIN_INSTALL_DIR)'...
 	@for x in $(PROGS) $(MAIN_PROGS); do \
-		echo cp $$x '$(BIN_INSTALL_DIR)/'$$x; \
-		cp $$x '$(BIN_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(BIN_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(BIN_INSTALL_DIR)/'$$x; \
 	done
 	@echo Installing headers into '$(INCLUDE_INSTALL_DIR)'...
-	mkdir -p '$(INCLUDE_INSTALL_DIR)'
+	$(MKDIR) '$(INCLUDE_INSTALL_DIR)'
 	@for x in $(ANUTILS_H); do \
-		echo cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
-		cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
+		echo $(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
+		$(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
 	done
 	@echo Installing libraries into '$(LIB_INSTALL_DIR)'...
-	mkdir -p '$(LIB_INSTALL_DIR)'
+	$(MKDIR) '$(LIB_INSTALL_DIR)'
 	@for x in $(ANFILES_LIB_FILE) $(ANUTILS_LIB_FILE) $(ANBASE_LIB_FILE); do \
-		echo cp $$x '$(LIB_INSTALL_DIR)/'$$x; \
-		cp $$x '$(LIB_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(LIB_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(LIB_INSTALL_DIR)/'$$x; \
 	done
 
 .PHONY: install-core

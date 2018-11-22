@@ -1,3 +1,4 @@
+from __future__ import print_function
 # This file is part of the Astrometry.net suite.
 # Licensed under a 3-clause BSD style license - see LICENSE
 import os
@@ -32,10 +33,10 @@ inc.append('../util') # for util.i
 cflags_swig = strlist(os.environ.get('CFLAGS_SWIG', ''))
 cflags = strlist(os.environ.get('CFLAGS', ''))
 
-print 'link:', link
-print 'objs:', objs
-print 'inc:', inc
-print 'cflags:', cflags_swig + cflags
+print(('link:', link))
+print(('objs:', objs))
+print(('inc:', inc))
+print(('cflags:', cflags_swig + cflags))
 
 objs = [
     'plotfill.o', 'plotxy.o',
@@ -50,20 +51,20 @@ c_module = Extension('_plotstuff_c',
                          'plotstuff.i',
                          #'plotstuff.c', 'plotfill.c', 'plotxy.c',
                          #'plotimage.c', 'plotannotations.c',
-						 #'plotgrid.c', 'plotoutline.c', 'plotindex.c',
-						 #'plotradec.c', 'plothealpix.c', 'plotmatch.c',
-						 #'matchfile.c', 'matchobj.c',
+                         #'plotgrid.c', 'plotoutline.c', 'plotindex.c',
+                         #'plotradec.c', 'plothealpix.c', 'plotmatch.c',
+                         #'matchfile.c', 'matchobj.c',
                          ],
                      include_dirs = [numpy_inc] + inc,
                      depends = objs,
                      extra_objects = objs,
-                     extra_compile_args = cflags_swig + cflags,
+                     extra_compile_args = cflags_swig,
                      extra_link_args=link,
                      swig_opts=['-I'+d for d in inc] + cflags_swig,
     )
 
 setup(cmdclass={'build_ext': an_build_ext},
-	  name = 'Plotting stuff in python',
+      name = 'Plotting stuff in python',
       version = '1.0',
       description = 'Just what you need, another plotting package!',
       author = 'Astrometry.net (Dustin Lang)',

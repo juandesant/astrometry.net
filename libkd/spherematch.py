@@ -1,5 +1,6 @@
 # This file is part of libkd.
 # Licensed under a 3-clause BSD style license - see LICENSE
+from __future__ import print_function
 from . import spherematch_c
 
 from ..util.starutil_numpy import radectoxyz, deg2dist, dist2deg, distsq2deg
@@ -73,9 +74,9 @@ def match_radec(ra1, dec1, ra2, dec2, radius_in_deg, notself=False,
             #(inds,dists2,counts) = X
             J,I,d,counts = X
             extra = (counts,)
-            print 'I', I.shape, I.dtype
-            print 'J', J.shape, J.dtype
-            print 'counts', counts.shape, counts.dtype
+            print('I', I.shape, I.dtype)
+            print('J', J.shape, J.dtype)
+            print('counts', counts.shape, counts.dtype)
     else:
         X = match(xyz1, xyz2, r, notself=notself, indexlist=indexlist)
         if indexlist:
@@ -89,66 +90,66 @@ def match_radec(ra1, dec1, ra2, dec2, radius_in_deg, notself=False,
 
 
 def cluster_radec(ra, dec, R, singles=False):
-	'''
-	Finds connected groups of objects in RA,Dec space.
+    '''
+    Finds connected groups of objects in RA,Dec space.
 
-	Returns a list of lists of indices that are connected,
-	EXCLUDING singletons.
+    Returns a list of lists of indices that are connected,
+    EXCLUDING singletons.
 
     If *singles* is *True*, also returns the indices of singletons.
-	'''
-	I,J,d = match_radec(ra, dec, ra, dec, R, notself=True)
+    '''
+    I,J,d = match_radec(ra, dec, ra, dec, R, notself=True)
 
-	# 'mgroups' maps each index in a group to a list of the group members
-	mgroups = {}
-	# 'ugroups' is a list of the unique groups
-	ugroups = []
-	
-	for i,j in zip(I,J):
-		# Are both sources already in groups?
-		if i in mgroups and j in mgroups:
-			# Are they already in the same group?
-			if mgroups[i] == mgroups[j]:
-				continue
-			# merge if they are different;
-			# assert(they are disjoint)
-			lsti = mgroups[i]
-			lstj = mgroups[j]
-			merge = lsti + lstj
-			for k in merge:
-				mgroups[k] = merge
+    # 'mgroups' maps each index in a group to a list of the group members
+    mgroups = {}
+    # 'ugroups' is a list of the unique groups
+    ugroups = []
+    
+    for i,j in zip(I,J):
+        # Are both sources already in groups?
+        if i in mgroups and j in mgroups:
+            # Are they already in the same group?
+            if mgroups[i] == mgroups[j]:
+                continue
+            # merge if they are different;
+            # assert(they are disjoint)
+            lsti = mgroups[i]
+            lstj = mgroups[j]
+            merge = lsti + lstj
+            for k in merge:
+                mgroups[k] = merge
 
-			ugroups.remove(lsti)
-			ugroups.remove(lstj)
-			ugroups.append(merge)
+            ugroups.remove(lsti)
+            ugroups.remove(lstj)
+            ugroups.append(merge)
 
-		elif i in mgroups:
-			# Add j to i's group
-			lst = mgroups[i]
-			lst.append(j)
-			mgroups[j] = lst
-		elif j in mgroups:
-			# Add i to j's group
-			lst = mgroups[j]
-			lst.append(i)
-			mgroups[i] = lst
-		else:
-			# Create a new group
-			lst = [i,j]
-			mgroups[i] = lst
-			mgroups[j] = lst
+        elif i in mgroups:
+            # Add j to i's group
+            lst = mgroups[i]
+            lst.append(j)
+            mgroups[j] = lst
+        elif j in mgroups:
+            # Add i to j's group
+            lst = mgroups[j]
+            lst.append(i)
+            mgroups[i] = lst
+        else:
+            # Create a new group
+            lst = [i,j]
+            mgroups[i] = lst
+            mgroups[j] = lst
 
-			ugroups.append(lst)
+            ugroups.append(lst)
 
 
-	if singles:
-		S = np.ones(len(ra), bool)
-		for g in ugroups:
-			S[np.array(g)] = False
-		S = np.flatnonzero(S)
-		return ugroups,S
+    if singles:
+        S = np.ones(len(ra), bool)
+        for g in ugroups:
+            S[np.array(g)] = False
+        S = np.flatnonzero(S)
+        return ugroups,S
 
-	return ugroups
+    return ugroups
 
 
 
@@ -163,22 +164,17 @@ def _cleaninputs(x1, x2):
     (N1,D1) = fx1.shape
     (N2,D2) = fx2.shape
     if D1 != D2:
-        raise ValueError, 'Arrays must have the same dimensionality'
+        raise ValueError('Arrays must have the same dimensionality')
     return (fx1,fx2)
 
 def _buildtrees(x1, x2):
     (fx1, fx2) = _cleaninputs(x1, x2)
-    kd1 = spherematch_c.kdtree_build(fx1)
+    kd1 = spherematch_c.KdTree(fx1)
     if fx2 is fx1:
         kd2 = kd1
     else:
-        kd2 = spherematch_c.kdtree_build(fx2)
+        kd2 = spherematch_c.KdTree(fx2)
     return (kd1, kd2)
-
-def _freetrees(kd1, kd2):
-    spherematch_c.kdtree_free(kd1)
-    if kd2 != kd1:
-        spherematch_c.kdtree_free(kd2)
 
 def match(x1, x2, radius, notself=False, permuted=True, indexlist=False):
     '''
@@ -300,7 +296,6 @@ def match(x1, x2, radius, notself=False, permuted=True, indexlist=False):
         inds = spherematch_c.match2(kd1, kd2, radius, notself, permuted)
     else:
         (inds,dists) = spherematch_c.match(kd1, kd2, radius, notself, permuted)
-    _freetrees(kd1, kd2)
     if indexlist:
         return inds
     return (inds,dists)
@@ -340,7 +335,6 @@ def nearest(x1, x2, maxradius, notself=False, count=False):
         X = spherematch_c.nearest2(kd1, kd2, maxradius, notself, count)
     else:
         X = spherematch_c.nearest(kd1, kd2, maxradius, notself)
-    _freetrees(kd1, kd2)
     return X
 _nearest_func = nearest
 
@@ -355,10 +349,10 @@ def tree_build_radec(ra=None, dec=None, xyz=None):
         cosd = np.cos(np.deg2rad(dec))
         xyz[:,0] = cosd * np.cos(np.deg2rad(ra))
         xyz[:,1] = cosd * np.sin(np.deg2rad(ra))
-    kd = spherematch_c.kdtree_build(xyz)
+    kd = spherematch_c.KdTree(xyz)
     return kd
 
-def tree_build(X):
+def tree_build(X, nleaf=16, bbox=True, split=False):
     '''
     Builds a kd-tree given a numpy array of Euclidean points.
     
@@ -372,43 +366,47 @@ def tree_build(X):
     kd: integer
         kd-tree identifier (address).
     '''
-    return spherematch_c.kdtree_build(X)
+    return spherematch_c.KdTree(X, nleaf=nleaf, bbox=bbox, split=split)
 
 def tree_free(kd):
     '''
     Frees a kd-tree previously created with *tree_build*.
     '''
-    spherematch_c.kdtree_free(kd)
+    print('No need for tree_free')
+    pass
 
 def tree_save(kd, fn):
     '''
     Writes a kd-tree to the given filename.
     '''
-    rtn = spherematch_c.kdtree_write(kd, fn)
-    return rtn
+    print('Deprecated tree_save()')
+    return kd.write(fn)
+#rtn = spherematch_c.kdtree_write(kd, fn)
+#return rtn
 
 def tree_open(fn, treename=None):
     '''
     Reads a kd-tree from the given filename.
     '''
     if treename is None:
-        return spherematch_c.kdtree_open(fn)
+        return spherematch_c.KdTree(fn)
     else:
-        return spherematch_c.kdtree_open(fn, treename)
+        return spherematch_c.KdTree(fn, treename)
 
 def tree_close(kd):
     '''
     Closes a kd-tree previously opened with *tree_open*.
     '''
-    return spherematch_c.kdtree_close(kd)
+    print('No need for tree_close')
+    pass
 
 def tree_search(kd, pos, radius, getdists=False, sortdists=False):
     '''
     Searches the given kd-tree for points within *radius* of the given
     position *pos*.
     '''
-    return spherematch_c.kdtree_rangesearch(kd, pos, radius,
-                                            int(getdists), int(sortdists))
+    #print('Unnecessary call to tree_search(kd, ...); use kd.search(...)')
+    return kd.search(pos, radius, int(getdists), int(sortdists))
 
 def tree_search_radec(kd, ra, dec, radius, getdists=False, sortdists=False):
     '''
@@ -478,11 +476,25 @@ def trees_match(kd1, kd2, radius, nearest=False, notself=False,
         rtn = (I,J,d)
     return rtn
 
-tree_permute = spherematch_c.kdtree_permute
-tree_bbox = spherematch_c.kdtree_bbox
-tree_n = spherematch_c.kdtree_n
-tree_print = spherematch_c.kdtree_print
-tree_data = spherematch_c.kdtree_get_positions
+def tree_permute(kd, I):
+    print('Unnecessary call to tree_permute(kd, I): use kd.permute(I)')
+    return kd.permute(I)
+
+def tree_bbox(kd):
+    print('Unnecessary call to tree_bbox(kd): use kd.bbox')
+    return kd.bbox
+
+def tree_n(kd):
+    print('Unnecessary call to tree_n(kd): use kd.n')
+    return kd.n
+
+def tree_print(kd):
+    print('Unnecessary call to tree_print(kd): use kd.print()')
+    kd.print()
+    
+def tree_data(kd, I):
+    print('Unnecessary call to tree_data(kd, I): use kd.get_data(I)')
+    return kd.get_data(I)
 
 if __name__ == '__main__':
     import doctest

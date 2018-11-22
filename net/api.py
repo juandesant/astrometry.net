@@ -1,3 +1,5 @@
+from __future__ import print_function
+from __future__ import absolute_import
 import base64
 
 from functools import wraps
@@ -8,6 +10,8 @@ if __name__ == '__main__':
     import sys
     fn = os.path.dirname(os.path.dirname(__file__))
     sys.path.append(fn)
+    import django
+    django.setup()
 
 from django.contrib import auth
 from django.shortcuts import get_object_or_404
@@ -18,9 +22,9 @@ from django.views.decorators.csrf import csrf_exempt
 # astrometry.net imports
 from astrometry.net.models import *
 from astrometry.net.views.submission import handle_upload
-from api_util import *
-from log import *
-from tmpfile import *
+from .api_util import *
+from .log import *
+from .tmpfile import *
 import settings
 
 # Content-type to return for JSON outputs.
@@ -100,11 +104,33 @@ def requires_json_login(handler):
 
 
 def upload_common(request, url=None, file=None):
-    df, original_filename = handle_upload(file=file, url=url)
-    submittor = request.user if request.user.is_authenticated() else None
-    pro = get_user_profile(submittor)
     json = request.json
     logmsg('upload: JSON', json)
+    # Handle X,Y coordinate lists
+    if 'x' in json and 'y' in json:
+        import numpy as np
+        from astrometry.util.fits import fits_table
+        # Turns out the easiest way to interface this with the rest of the code
+        # is to just write a FITS table...
+        try:
+            x = np.array([float(v) for v in json['x']])
+            y = np.array([float(v) for v in json['y']])
+        except:
+            return HttpResponseErrorJson('Failed to parse JSON "x" and "y" values -- should be lists of floats')
+        if len(x) != len(y):
+            return HttpResponseErrorJson('"x" and "y" lists must be the same length')
+        T = fits_table()
+        T.x = x
+        T.y = y
+        temp_file_path = tempfile.mktemp()
+        T.writeto(temp_file_path)
+        df = DiskFile.from_file(temp_file_path,
+                                collection=Image.ORIG_COLLECTION)
+        original_filename = 'json-xy'
+    else:
+        df, original_filename = handle_upload(file=file, url=url)
+    submittor = request.user if request.user.is_authenticated() else None
+    pro = get_user_profile(submittor)
     allow_commercial_use = json.get('allow_commercial_use', 'd')
     allow_modifications = json.get('allow_modifications', 'd')
     license,created = License.objects.get_or_create(
@@ -154,8 +180,6 @@ def upload_common(request, url=None, file=None):
                              'subid': sub.id,
                              'hash': sub.disk_file.file_hash}) 
 
-
-
 @csrf_exempt
 @requires_json_args
 @requires_json_session
@@ -195,7 +219,7 @@ def api_upload(request):
     logmsg('request.GET has keys:', request.GET.keys())
     logmsg('request.FILES has keys:', request.FILES.keys())
     #logmsg('api_upload: got request: ' + str(request.FILES['file'].size))
-    return upload_common(request, file=request.FILES['file'])
+    return upload_common(request, file=request.FILES.get('file'))
 
 def write_wcs_file(req, wcsfn):
     from astrometry.util import util as anutil
@@ -212,7 +236,7 @@ def write_wcs_file(req, wcsfn):
 @requires_json_args
 @requires_json_session
 def api_sdss_image_for_wcs(req):
-    from sdss_image import plot_sdss_image
+    from .sdss_image import plot_sdss_image
     wcsfn = get_temp_file()
     plotfn = get_temp_file()
     write_wcs_file(req, wcsfn)
@@ -225,7 +249,7 @@ def api_sdss_image_for_wcs(req):
 @requires_json_args
 @requires_json_session
 def api_galex_image_for_wcs(req):
-    from galex_jpegs import plot_into_wcs
+    from .galex_jpegs import plot_into_wcs
     wcsfn = get_temp_file()
     plotfn = get_temp_file()
     write_wcs_file(req, wcsfn)
@@ -355,6 +379,8 @@ def calibration(req, job_id):
         return HttpResponseJson({
             'ra':ra,
             'dec':dec,
+            'width_arcsec': pixscale * cal.raw_tan.imagew,
+            'height_arcsec': pixscale * cal.raw_tan.imageh,
             'radius':radius,
             'pixscale':pixscale,
             'orientation':orient,
@@ -519,6 +545,7 @@ def jobs_by_tag(req):
 
 
 if __name__ == '__main__':
-    job = Job.objects.get(id=12)
+    #job = Job.objects.get(id=12)
+    job = Job.objects.get(id=1649169)
     cal = job.calibration
-    print get_anns(cal)
+    print(get_anns(cal))

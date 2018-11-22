@@ -1,3 +1,4 @@
+from __future__ import print_function
 from django.http import HttpResponse, HttpResponseRedirect, HttpResponseBadRequest, QueryDict
 from django.shortcuts import render_to_response, get_object_or_404, redirect
 from django.template import Context, RequestContext, loader
@@ -5,8 +6,8 @@ from django.contrib.auth.decorators import login_required
 
 from astrometry.net.models import *
 from astrometry.net import settings
-from astrometry.net.util import NoBulletsRenderer
 from astrometry.net.log import *
+from astrometry.net.util import NoBulletsRadioSelect
 from django import forms
 from django.http import HttpResponseRedirect
 
@@ -15,8 +16,8 @@ class LicenseForm(forms.ModelForm):
         model = License
         exclude = ('license_uri','license_name')
         widgets = {
-            'allow_commercial_use':forms.RadioSelect(renderer=NoBulletsRenderer),
-            'allow_modifications':forms.RadioSelect(renderer=NoBulletsRenderer),
+            'allow_commercial_use': NoBulletsRadioSelect(),
+            'allow_modifications':  NoBulletsRadioSelect(),
         }
 
 @login_required
@@ -34,7 +35,7 @@ def edit(req, license_id):
             license.save()
             redirect_url = req.POST.get('next','/')
         except:
-            print 'failed'
+            print('failed')
             redirect_url = ('/')
             pass
 

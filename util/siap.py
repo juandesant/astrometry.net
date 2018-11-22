@@ -1,5 +1,6 @@
 # This file is part of the Astrometry.net suite.
 # Licensed under a 3-clause BSD style license - see LICENSE
+from __future__ import print_function
 from xml.dom import minidom, Node
 import numpy as np
 from astrometry.util.fits import *
@@ -12,16 +13,16 @@ def siap_parse_result(fn=None):
     table = tables[0]
     
     fields = table.getElementsByTagName('FIELD')
-    print '%i fields' % len(fields)
+    print('%i fields' % len(fields))
     fieldnames = []
     fieldtypes = []
     fieldparser = []
     fieldisarray = []
     for f in fields:
         name = f.getAttribute('name').lower().replace('[]', '')
-        print 'field:', name,
+        print('field:', name, end=' ')
         ftype = f.getAttribute('datatype').lower()
-        print '(%s)' % ftype
+        print('(%s)' % ftype)
         farray = f.hasAttribute('arraysize')
 
         ftmap = {'int':int,
@@ -40,7 +41,7 @@ def siap_parse_result(fn=None):
     data = data[0]
 
     rows = data.getElementsByTagName('TR')
-    print '%i rows' % len(rows)
+    print('%i rows' % len(rows))
 
     datarows = []
     for r in rows:
@@ -59,12 +60,16 @@ def siap_parse_result(fn=None):
                 continue
             assert(c.firstChild)
             c = c.firstChild
-            assert(c.nodeType == Node.TEXT_NODE)
+            # print('Node:', c)
+            # print('Node value:', c.nodeValue)
+            assert(c.nodeType in [Node.TEXT_NODE, Node.CDATA_SECTION_NODE])
             c = c.nodeValue
             datum = None
             if fa and ft in ['int','double']:
-                elements = c.split(',')
-                datum = array([fp(x) for x in elements])
+                #elements = c.split(',')
+                c = c.replace(',', ' ')
+                elements = c.split()
+                datum = np.array([fp(x) for x in elements])
             elif fp:
                 datum = fp(c)
             else:

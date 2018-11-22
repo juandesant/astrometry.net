@@ -233,7 +233,7 @@ def clip_wcs(wcs1, wcs2, makeConvex=True, pix1=None, pix2=None):
             XX = np.array(list(reversed(XX)))
             YY = np.array(list(reversed(YY)))
 
-    clip = clip_polygon(zip(xx, yy), zip(XX, YY))
+    clip = clip_polygon(list(zip(xx, yy)), list(zip(XX, YY)))
     clip = np.array(clip)
 
     if False:
@@ -366,6 +366,9 @@ def line_segments_intersect(xy1, xy2, xy3, xy4):
     (x3,y3) = xy3
     (x4,y4) = xy4
     x,y = line_intersection((x1,y1),(x2,y2),(x3,y3),(x4,y4))
+    if x is None:
+        # Parallel lines
+        return False
     if x1 == x2:
         p1,p2 = y1,y2
         p = y
@@ -475,6 +478,9 @@ def lanczos_filter(order, x, out=None):
     nz = np.flatnonzero(nz)
     if out is None:
         out = np.zeros(x.shape, dtype=float)
+    else:
+        out[x <= -order] = 0.
+        out[x >=  order] = 0.
     pinz = pi * x.flat[nz]
     out.flat[nz] = order * np.sin(pinz) * np.sin(pinz / order) / (pinz**2)
     out[x == 0] = 1.

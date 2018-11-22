@@ -2,11 +2,13 @@ Astrometry.net
 ==============
 
 [![Build Status](https://travis-ci.org/dstndstn/astrometry.net.png?branch=master)](https://travis-ci.org/dstndstn/astrometry.net)
+[![Tag Version](https://img.shields.io/github/tag/dstndstn/astrometry.net.svg)](https://github.com/dstndstn/astrometry.net/tags)
+[![License](http://img.shields.io/:license-gpl2-blue.svg)](http://www.gnu.org/licenses/gpl-2.0.html)
 
 Automatic recognition of astronomical images; or standards-compliant
 astrometric metadata from data.
 
-Latest release: http://astrometry.net/downloads/astrometry.net-latest.tar.gz
+Documentation: https://astrometrynet.readthedocs.io/en/latest/
 
 > If you have astronomical imaging of the sky with celestial coordinates
 > you do not know—or do not trust—then Astrometry.net is for you. Input

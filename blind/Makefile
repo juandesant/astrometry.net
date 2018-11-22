@@ -97,18 +97,17 @@ OTHER_OBJS := catalog.o codefile.o verify.o \
 	blindutils.o engine-main.o engine.o plotquad.o plotxy.o tweak2.o
 
 NOT_INSTALLED_PIPELINE := blind agreeable certifiable \
-	startree hpquads codetree unpermute-quads unpermute-stars \
+	hpquads codetree unpermute-quads unpermute-stars \
 	solvedserver printsolved mergesolved subwcs \
 	augment-xylist merge-index index-to-table setsolved \
-	startree2 uniformize-catalog \
-	local-index index-info control-program
+	uniformize-catalog local-index index-info control-program
 
 PIPELINE := wcs-grab solve-field
 
-MAIN_PROGS := image2xy new-wcs fits-guess-scale
+MAIN_PROGS := image2xy new-wcs fits-guess-scale startree
 # hpquads
 
-SIMPLE_PROGS := wcs-grab get-wcs
+SIMPLE_PROGS := wcs-grab get-wcs query-starkd
 # hpowned
 
 PROGS := astrometry-engine build-astrometry-index \
@@ -130,7 +129,7 @@ ENGINE_OBJS := \
 ENGINE_OBJS += new-wcs.o fits-guess-scale.o cut-table.o \
 	resort-xylist.o
 
-BUILD_INDEX_OBJS := build-index.o uniformize-catalog.o startree2.o hpquads.o \
+BUILD_INDEX_OBJS := build-index.o uniformize-catalog.o startree.o hpquads.o \
 	quad-builder.o quad-utils.o codefile.o codetree.o unpermute-stars.o \
 	unpermute-quads.o merge-index.o 
 ENGINE_OBJS += $(BUILD_INDEX_OBJS)
@@ -162,7 +161,7 @@ PIPELINE_MAIN_OBJ := $(addsuffix .o,$(PIPELINE))
 PROSPECTUS_MAIN_OBJ := $(addsuffix .o,$(PROSPECTUS))
 FITS_UTILS_MAIN_OBJ := $(addsuffix .o,$(FITS_UTILS))
 
-INSTALL_EXECS := $(FITS_UTILS) $(PIPELINE) $(PROGS)
+INSTALL_EXECS := $(FITS_UTILS) fitsverify $(PIPELINE) $(PROGS)
 INSTALL_CAIRO_EXECS := $(CAIROEXECS)
 
 INSTALL_H := allquads.h augment-xylist.h axyfile.h \
@@ -219,32 +218,32 @@ PYTHON_INSTALL := $(PYTHON_EXECS) __init__.py
 
 install: $(INSTALL_EXECS) $(INSTALL_LIB)
 	@echo Installing in directory '$(INSTALL_DIR)'
-	mkdir -p '$(INSTALL_DIR)/bin'
+	$(MKDIR) '$(INSTALL_DIR)/bin'
 	@for x in $(INSTALL_EXECS); do \
-		echo cp $$x '$(INSTALL_DIR)/bin'; \
-		cp $$x '$(INSTALL_DIR)/bin'; \
+		echo $(CP) $$x '$(INSTALL_DIR)/bin'; \
+		$(CP) $$x '$(INSTALL_DIR)/bin'; \
 	done
-	mkdir -p '$(ETC_INSTALL_DIR)'
-	$(PYTHON) -c "import os; print open('../etc/astrometry.cfg-dist').read().replace('DATA_INSTALL_DIR', '$(DATA_FINAL_DIR)')" > '$(ETC_INSTALL_DIR)/astrometry.cfg'
-	mkdir -p '$(INCLUDE_INSTALL_DIR)'
+	$(MKDIR) '$(ETC_INSTALL_DIR)'
+	$(PYTHON) -c "import os; print(open('../etc/astrometry.cfg-dist').read().replace('DATA_INSTALL_DIR', '$(DATA_FINAL_DIR)'))" > '$(ETC_INSTALL_DIR)/astrometry.cfg'
+	$(MKDIR) '$(INCLUDE_INSTALL_DIR)'
 	@for x in $(INSTALL_H); do \
-		echo cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
-		cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
+		echo $(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
+		$(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
 	done
-	mkdir -p '$(LIB_INSTALL_DIR)'
+	$(MKDIR) '$(LIB_INSTALL_DIR)'
 	@for x in $(INSTALL_LIB); do \
-		echo cp $$x '$(LIB_INSTALL_DIR)'; \
-		cp $$x '$(LIB_INSTALL_DIR)'; \
+		echo $(CP) $$x '$(LIB_INSTALL_DIR)'; \
+		$(CP) $$x '$(LIB_INSTALL_DIR)'; \
 	done
-	mkdir -p '$(PY_INSTALL_DIR)'
+	$(MKDIR) '$(PY_INSTALL_DIR)'
 	@for x in $(PYTHON_INSTALL); do \
-		echo cp $$x '$(PY_INSTALL_DIR)/'$$x; \
-		cp $$x '$(PY_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
 	done
 	@echo Making symlinks in directory '$(BIN_INSTALL_DIR)'
-	mkdir -p '$(BIN_INSTALL_DIR)'
+	$(MKDIR) '$(BIN_INSTALL_DIR)'
 	@for x in $(PYTHON_EXECS); do \
-		echo ln -f -s '$(PY_INSTALL_DIR)/'$$x '$(BIN_INSTALL_DIR)/'$$x; \
+		echo ln -f -s '$(LINK_DIR)/'$$x '$(BIN_INSTALL_DIR)/'$$x; \
 		ln -f -s '$(LINK_DIR)/'$$x '$(BIN_INSTALL_DIR)/'$$x; \
 	done
 
@@ -253,21 +252,21 @@ PYTHON_EXTRA_INSTALL := plotstuff.py plotstuff_c.py _plotstuff_c$(PYTHON_SO_EXT)
 
 install-extra: $(INSTALL_CAIRO_EXECS)
 	@echo Installing in directory '$(INSTALL_DIR)'
-	mkdir -p '$(INSTALL_DIR)/bin'
+	$(MKDIR) '$(INSTALL_DIR)/bin'
 	@for x in $(INSTALL_CAIRO_EXECS); do \
-		echo cp $$x '$(INSTALL_DIR)/bin'; \
-		cp $$x '$(INSTALL_DIR)/bin'; \
+		echo $(CP) $$x '$(INSTALL_DIR)/bin'; \
+		$(CP) $$x '$(INSTALL_DIR)/bin'; \
 	done
-	mkdir -p '$(INCLUDE_INSTALL_DIR)'
+	$(MKDIR) '$(INCLUDE_INSTALL_DIR)'
 	@for x in $(PLOT_INSTALL_H); do \
-		echo cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
-		cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
+		echo $(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
+		$(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)'; \
 	done
 	$(MAKE) $(PYTHON_EXTRA_INSTALL)
-	mkdir -p '$(PY_INSTALL_DIR)'
+	$(MKDIR) '$(PY_INSTALL_DIR)'
 	@for x in $(PYTHON_EXTRA_INSTALL); do \
-		echo cp $$x '$(PY_INSTALL_DIR)/'$$x; \
-		cp $$x '$(PY_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
 	done
 
 test-solver: test-solver.o solver_test.o $(SLIB)
@@ -327,6 +326,11 @@ demo_dsmooth: demo_dsmooth.o $(CAIRO_SLIB)
 control-program: control-program.o $(SLIB)
 ALL_OBJ += control-program.o
 
+whynot: whynot.o $(PLOTSTUFF) $(CAIRO_SLIB) $(SLIB)
+	$(CC) -o $@ $(LDFLAGS) $^ $(CAIRO_LIBS) $(LDLIBS)
+
+quadidx: quadidx.o $(SLIB)
+
 image2xy: image2xy-main.o image2xy-files.o $(CFITS_SLIB) $(SLIB)
 	$(CC) -o $@ $(LDFLAGS) $^ $(CFITS_LIB) $(LDLIBS)
 
@@ -353,9 +357,9 @@ allquads: allquads-main.o allquads.o $(SLIB)
 	$(CC) -o $@ $(LDFLAGS) $^ $(LDLIBS)
 ALL_OBJ += allquads-main.o allquads.o
 
-startree2: startree2-main.o $(SLIB)
+unpermute-stars: unpermute-stars-main.o $(SLIB)
 	$(CC) -o $@ $(LDFLAGS) $^ $(LDLIBS)
-ALL_OBJ += startree2-main.o
+ALL_OBJ += unpermute-stars-main.o
 
 astrometry-engine: engine-main.o $(SLIB)
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $^ $(LDLIBS)

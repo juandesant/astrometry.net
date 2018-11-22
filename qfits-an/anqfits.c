@@ -717,8 +717,10 @@ static int parse_header_block(const char* buf, qfits_header* hdr, int* found_it)
         if (!strcmp(line, blankline))
             continue;
         key = qfits_getkey_r(line, getkey_buf);
-        if (!key)
-            return -1;
+        if (!key) {
+            printf("Skipping un-parseable header line: \"%.80s\"\n", line);
+            continue;
+        }
         val = qfits_getvalue_r(line, getval_buf);
         comment = qfits_getcomment_r(line, getcom_buf);
         debug("Got key/value/comment \"%s\" / \"%s\" / \"%s\"\n", key, val, comment);
@@ -1109,6 +1111,9 @@ void* anqfits_readpix(const anqfits_t* qf, int ext,
     int outbpp;
 
     tfits_type in_ttype, out_ttype;
+
+    if (!img)
+        return NULL;
 
     if (x0) {
         if ((x0 < 0) || (x1 && (x0 >= x1)) || (x0 >= img->width)) {

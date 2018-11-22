@@ -1,7 +1,32 @@
+from __future__ import absolute_import
 sitename = 'nova'
 
 # settings_nova.py
 from settings_common import *
+
+MULTI_HOSTS = ['nova3.astrometry.net',
+               'nova4.astrometry.net',
+               'nova5.astrometry.net',
+               'nova6.astrometry.net',]
+
+# from settings_social import *
+# ENABLE_SOCIAL = True
+# SOUTH_MIGRATION_MODULES.update(SOCIAL_MIGRATION)
+# TEMPLATE_CONTEXT_PROCESSORS += SOCIAL_TEMPLATE_CONTEXT_PROCESSORS
+# INSTALLED_APPS += SOCIAL_INSTALLED_APPS 
+# AUTHENTICATION_BACKENDS = SOCIAL_AUTH_BACKENDS + AUTHENTICATION_BACKENDS
+
+from astrometry.net.settings_social2 import *
+ENABLE_SOCIAL2 = True
+INSTALLED_APPS += SOCIAL_INSTALLED_APPS 
+AUTHENTICATION_BACKENDS = SOCIAL_AUTH_BACKENDS + AUTHENTICATION_BACKENDS
+TEMPLATES[0]['OPTIONS']['context_processors'].extend(SOCIAL_TEMPLATE_CONTEXT_PROCESSORS)
+
+USE_X_FORWARDED_HOST = True
+
+#INSTALLED_APPS = list(INSTALLED_APPS) + ['social.apps.django_app.default']
+
+sitename = 'nova'
 
 TEMPDIR = '/data2/tmp'
 DATABASES['default']['NAME'] = 'an-nova'

@@ -1,6 +1,6 @@
 /*
-# This file is part of the Astrometry.net suite.
-# Licensed under a 3-clause BSD style license - see LICENSE
+ # This file is part of the Astrometry.net suite.
+ # Licensed under a 3-clause BSD style license - see LICENSE
  */
 
 #include <stdio.h>
@@ -127,7 +127,8 @@ int dmedsmooth_grid(const float* image,
                 nm = nb / 2;
                 grid[i + j*nxgrid] = dselip(nm, nb, arr);
             } else {
-                grid[i + j*nxgrid] = image[(long)xlo[i] + ((long)ylo[j]) * nx];
+                //grid[i + j*nxgrid] = image[(long)xlo[i] + ((long)ylo[j]) * nx];
+                grid[i + j*nxgrid] = 0.0;
             }
         }
     }

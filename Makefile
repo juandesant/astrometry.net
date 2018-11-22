@@ -41,11 +41,9 @@ COMMON := $(BASEDIR)/util
 #            util/libanbase.a  -- basic stuff
 
 include $(COMMON)/makefile.common
-#include $(COMMON)/makefile.qfits
-#include $(COMMON)/makefile.cfitsio
 
-.PHONY: all
 all: subdirs
+.PHONY: all
 
 check: pkgconfig
 .PHONY: check
@@ -57,21 +55,36 @@ pkgconfig:
 	pkg-config --modversion cfitsio || (echo -e "\nWe require cfitsio but it was not found.\nGet it from http://heasarc.gsfc.nasa.gov/fitsio/\nOr on Ubuntu/Debian, apt-get install cfitsio-dev\nOr on Mac OS / Homebrew, brew install cfitsio\n" && false)
 .PHONY: pkgconfig
 
-subdirs: thirdparty
-	$(MAKE) -C util
-	$(MAKE) -C catalogs
-	$(MAKE) -C libkd
-	$(MAKE) -C blind
-
-thirdparty: qfits-an
-
 # Detect GSL -- this minimum version was chosen to match the version in gsl-an.
 # Earlier versions would probably work fine.
 SYSTEM_GSL ?= $(shell (pkg-config --atleast-version=1.14 gsl && echo "yes") || echo "no")
+# Make this variable visible to recursive "make" calls
+export SYSTEM_GSL
 
 ifneq ($(SYSTEM_GSL),yes)
-thirdparty: gsl-an
+subdirs: gsl-an
+blind: gsl-an
 endif
+
+SUBDIRS := util catalogs libkd blind sdss qfits-an
+SUBDIRS_OPT := gsl-an
+
+subdirs: $(SUBDIRS)
+
+util: config qfits-an
+
+libkd: config util
+
+catalogs: config libkd
+
+blind: config util catalogs libkd qfits-an
+
+$(SUBDIRS):
+	$(MAKE) -C $@
+$(SUBDIRS_OPT):
+	$(MAKE) -C $@
+
+.PHONY: subdirs $(SUBDIRS) $(SUBDIRS_OPT)
 
 doc:
 	$(MAKE) -C doc html
@@ -80,35 +93,37 @@ html:
 .PHONY: html
 	$(MAKE) -C doc html
 
-qfits-an:
-	$(MAKE) -C qfits-an
-
-gsl-an:
-	$(MAKE) -C gsl-an
-
-.PHONY: subdirs thirdparty qfits-an gsl-an
-
 # Targets that require extra libraries
-extra:
-	$(MAKE) -C qfits-an
-	$(MAKE) -C util
-	$(MAKE) -C catalogs
+extra: qfits-an util catalogs blind-cairo
+
+blind-cairo: cairoutils
 	$(MAKE) -C blind cairo
 
-# Targets that create python bindings (requiring swig)
-py: thirdparty
-	$(MAKE) -C catalogs
-	$(MAKE) -C util pyutil
-	$(MAKE) -C util cairoutils.o
-	$(MAKE) -C blind pyplotstuff
-	$(MAKE) -C libkd pyspherematch
-	$(MAKE) -C sdss
+.PHONY: blind-cairo
+.PHONY: extra
 
-pyutil: thirdparty
+# Targets that create python bindings (requiring swig)
+py: catalogs pyutil libkd-spherematch sdss cairoutils pyplotstuff
+
+libkd-spherematch:
+	$(MAKE) -C libkd pyspherematch
+
+cairoutils:
+	$(MAKE) -C util cairoutils.o
+
+pyplotstuff: cairoutils
+	$(MAKE) -C blind pyplotstuff
+
+.PHONY: py libkd-spherematch cairoutils pyplotstuff
+
+pyutil: qfits-an
 	$(MAKE) -C util pyutil
+
+.PHONY: py pyutil
 
 install: all report.txt
 	$(MAKE) install-core
+	$(MAKE) install-gsl
 	@echo
 	@echo The following command may fail if you don\'t have the cairo, netpbm, and
 	@echo png libraries and headers installed.  You will lose out on some eye-candy
@@ -120,27 +135,44 @@ install: all report.txt
 	@echo
 
 install-core:
-	mkdir -p '$(DATA_INSTALL_DIR)'
-	mkdir -p '$(BIN_INSTALL_DIR)'
-	mkdir -p '$(DOC_INSTALL_DIR)'
-	mkdir -p '$(INCLUDE_INSTALL_DIR)'
-	mkdir -p '$(LIB_INSTALL_DIR)'
-	mkdir -p '$(EXAMPLE_INSTALL_DIR)'
-	mkdir -p '$(PY_BASE_INSTALL_DIR)'
-	mkdir -p '$(MAN1_INSTALL_DIR)'
-	cp __init__.py '$(PY_BASE_INSTALL_DIR)'
-	cp CREDITS LICENSE README.md report.txt '$(DOC_INSTALL_DIR)'
-	cp demo/* '$(EXAMPLE_INSTALL_DIR)'
-	cp man/*.1 '$(MAN1_INSTALL_DIR)'
+	$(MKDIR) '$(DATA_INSTALL_DIR)'
+	$(MKDIR) '$(BIN_INSTALL_DIR)'
+	$(MKDIR) '$(DOC_INSTALL_DIR)'
+	$(MKDIR) '$(INCLUDE_INSTALL_DIR)'
+	$(MKDIR) '$(LIB_INSTALL_DIR)'
+	$(MKDIR) '$(EXAMPLE_INSTALL_DIR)'
+	$(MKDIR) '$(PY_BASE_INSTALL_DIR)'
+	$(MKDIR) '$(MAN1_INSTALL_DIR)'
+	$(CP) __init__.py '$(PY_BASE_INSTALL_DIR)'
+	$(CP) CREDITS LICENSE README.md report.txt '$(DOC_INSTALL_DIR)'
+	$(CP) demo/* '$(EXAMPLE_INSTALL_DIR)'
+	$(CP) man/*.1 '$(MAN1_INSTALL_DIR)'
 	$(MAKE) -C util  install-core
 	$(MAKE) -C catalogs install
 	$(MAKE) -C libkd install
 	$(MAKE) -C qfits-an install
 	$(MAKE) -C blind install
 	$(MAKE) -C sdss install
+.PHONY: install install-core
+
+ifeq ($(SYSTEM_GSL),yes)
+install-gsl:
+else
+install-gsl:
+	$(MAKE) -C gsl-an install
+endif
+.PHONY: install-gsl
+
+pyinstall:
+	$(MKDIR) '$(PY_BASE_INSTALL_DIR)'
+	$(CP) __init__.py '$(PY_BASE_INSTALL_DIR)'
+	$(MAKE) -C util pyinstall
+	$(MAKE) -C libkd install-spherematch
+	$(MAKE) -C sdss install
+	$(MAKE) -C catalogs pyinstall
 
 install-indexes:
-	mkdir -p '$(DATA_INSTALL_DIR)'
+	$(MKDIR) '$(DATA_INSTALL_DIR)'
 	@for x in `ls index-*.tar.bz2 2>/dev/null`; do \
 		echo Installing $$x in '$(DATA_INSTALL_DIR)'...; \
 		echo tar xvjf $$x -C '$(DATA_INSTALL_DIR)'; \
@@ -148,8 +180,8 @@ install-indexes:
 	done
 	@for x in `ls index-*.bz2 2>/dev/null | grep -v tar.bz2 2>/dev/null`; do \
 		echo Installing $$x in '$(DATA_INSTALL_DIR)'...; \
-		echo "cp $$x '$(DATA_INSTALL_DIR)' && bunzip2 --force '$(DATA_INSTALL_DIR)/'$$x;"; \
-		cp $$x '$(DATA_INSTALL_DIR)' && bunzip2 --force '$(DATA_INSTALL_DIR)/'$$x; \
+		echo "$(CP) $$x '$(DATA_INSTALL_DIR)' && bunzip2 --force '$(DATA_INSTALL_DIR)/'$$x;"; \
+		$(CP) $$x '$(DATA_INSTALL_DIR)' && bunzip2 --force '$(DATA_INSTALL_DIR)/'$$x; \
 	done
 	@for x in `ls index-*.tar.gz 2>/dev/null`; do \
 		echo Installing $$x in '$(DATA_INSTALL_DIR)'...; \
@@ -158,8 +190,8 @@ install-indexes:
 	done
 	@for x in `ls index-*.fits 2>/dev/null`; do \
 		echo Installing $$x in '$(DATA_INSTALL_DIR)'...; \
-		echo "cp $$x '$(DATA_INSTALL_DIR)'"; \
-		cp $$x '$(DATA_INSTALL_DIR)'; \
+		echo "$(CP) $$x '$(DATA_INSTALL_DIR)'"; \
+		$(CP) $$x '$(DATA_INSTALL_DIR)'; \
 	done
 
 reconfig:
@@ -200,9 +232,10 @@ retag-release:
 	git tag -a -m "Re-tag version $(RELEASE_VER)" $(RELEASE_VER)
 	git push origin $(RELEASE_VER)
 
+.PHONY: tag-release retag-release
+
 SNAPSHOT_RMDIRS := $(RELEASE_RMDIRS)
 
-.PHONY: snapshot
 snapshot:
 	-rm -R snapshot snapshot.tar snapshot.tar.gz snapshot.tar.bz2
 	git archive --prefix snapshot/ HEAD | tar x
@@ -217,6 +250,8 @@ snapshot:
 	tar cf snapshot.tar $$SSD; \
 	gzip --best -c snapshot.tar > $$SSD.tar.gz; \
 	bzip2 --best -c snapshot.tar > $$SSD.tar.bz2
+
+.PHONY: snapshot
 
 LIBKD_RELEASE_TEMP := libkd-$(RELEASE_VER)-temp
 LIBKD_RELEASE_DIR := libkd-$(RELEASE_VER)
@@ -254,7 +289,7 @@ LIBKD_RELEASE_SUBDIRS := qfits-an libkd doc \
 
 release-libkd:
 	-rm -R $(LIBKD_RELEASE_DIR) $(LIBKD_RELEASE_DIR).tar $(LIBKD_RELEASE_DIR).tar.gz $(LIBKD_RELEASE_DIR).tar.bz2 $(LIBKD_RELEASE_TEMP)
-	-mkdir -p $(LIBKD_RELEASE_DIR)
+	-$(MKDIR) $(LIBKD_RELEASE_DIR)
 	git archive --prefix $(LIBKD_RELEASE_TEMP)/ $(RELEASE_VER) | tar x
 	for x in $(LIBKD_RELEASE_SUBDIRS); do \
 		tar c -C '$(LIBKD_RELEASE_TEMP)' $$x | tar x -C $(LIBKD_RELEASE_DIR); \
@@ -263,13 +298,15 @@ release-libkd:
 	gzip --best -c $(LIBKD_RELEASE_DIR).tar > $(LIBKD_RELEASE_DIR).tar.gz
 	bzip2 --best $(LIBKD_RELEASE_DIR).tar
 
+.PHONY: release-libkd
+
 LIBKD_SNAPSHOT_DIR := snapshot-libkd
 LIBKD_SNAPSHOT_TEMP := libkd-snapshot-temp
 LIBKD_SNAPSHOT_SUBDIRS := $(LIBKD_RELEASE_SUBDIRS)
 
 snapshot-libkd:
 	-rm -R $(LIBKD_SNAPSHOT_DIR) $(LIBKD_SNAPSHOT_DIR).tar $(LIBKD_SNAPSHOT_DIR).tar.gz $(LIBKD_SNAPSHOT_DIR).tar.bz2 $(LIBKD_SNAPSHOT_TEMP)
-	-mkdir -p $(LIBKD_SNAPSHOT_DIR)
+	-$(MKDIR) $(LIBKD_SNAPSHOT_DIR)
 	git archive --prefix $(LIBKD_SNAPSHOT_TEMP)/ HEAD | tar x
 	for x in $(LIBKD_SNAPSHOT_SUBDIRS); do \
 		tar c -C '$(LIBKD_SNAPSHOT_TEMP)' $$x | tar x -C $(LIBKD_SNAPSHOT_DIR); \
@@ -283,10 +320,13 @@ snapshot-libkd:
 .PHONY: snapshot-libkd
 
 test:
-	$(MAKE) -C blind test
+	$(MAKE) -C util
+	$(MAKE) -C libkd
 	$(MAKE) -C util  test
 	$(MAKE) -C catalogs test
 	$(MAKE) -C libkd test
+	$(MAKE) -C blind test
+.PHONY: test
 
 clean:
 	$(MAKE) -C util clean
@@ -301,6 +341,8 @@ clean:
 
 realclean: clean
 
+.PHONY: clean realclean
+
 TAGS:
 	etags -I `find . -name "*.c" -o -name "*.h"`
 
@@ -309,7 +351,7 @@ tags:
 
 report:
 	-uname -m
-	-uname -a
+	-uname -r
 	-uname -p
 	-uname -s
 	@echo "CC is $(CC)"
@@ -340,6 +382,8 @@ report:
 	-pkg-config --modversion gsl
 	@echo "pkg-config --atleast-version=1.14 gsl && echo \"yes\""
 	-pkg-config --atleast-version=1.14 gsl && echo yes
+
+.PHONY: report
 
 report.txt: Makefile
 	$(MAKE) report > $@

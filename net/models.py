@@ -1,12 +1,7 @@
-import random
+from __future__ import print_function
+from __future__ import absolute_import
 import os
-import errno
-import hashlib
-import shutil
-import tempfile
 from datetime import datetime
-
-import numpy as np
 
 from django.db import models
 from django.db.models import Q
@@ -15,10 +10,9 @@ from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.urlresolvers import reverse
 
 from astrometry.net.settings import *
-from wcs import *
-from log import *
-
-from enhance_models import *
+from .wcs import *
+from .log import *
+from .enhance_models import *
 
 from astrometry.util.starutil_numpy import ra2hmsstring, dec2dmsstring
 from astrometry.util.filetype import filetype_short
@@ -27,11 +21,6 @@ from astrometry.util.fits import *
 from astrometry.util.image2pnm import image2pnm
 from astrometry.util import util as anutil
 from astrometry.net.tmpfile import *
-
-import PIL.Image, PIL.ImageDraw
-
-from urllib2 import urlopen
-
 from astrometry.net.abstract_models import *
 
 ### Admin view -- running Submissions and Jobs
@@ -108,6 +97,7 @@ class License(models.Model):
 
     def get_license_xml(self):
         try:
+            from urllib2 import urlopen
             allow_commercial_use = self.allow_commercial_use
             allow_modifications = self.allow_modifications
 
@@ -270,7 +260,7 @@ class DiskFile(models.Model):
         return 'DiskFile: %s, size %i, type %s, coll %s' % (self.file_hash, self.size, self.file_type, self.collection)
 
     def is_fits_image(self):
-        return self.file_type == 'FITS image data'
+        return self.file_type.startswith('FITS image data')
 
     def set_size_and_file_type(self):
         fn = self.get_path()
@@ -315,6 +305,7 @@ class DiskFile(models.Model):
             os.makedirs(file_directory)
         except OSError as e:
             # we don't care if the directory already exists
+            import errno
             if e.errno == errno.EEXIST:
                 pass
             else: raise
@@ -339,9 +330,15 @@ class DiskFile(models.Model):
             defaults=dict(size=0, file_type='', collection=collection))
         if created or not os.path.exists(df.get_path()):
             try:
+                import stat
+                import shutil
                 # move it into place
                 df.make_dirs()
+                print('Moving', filename, 'to', df.get_path())
                 shutil.move(filename, df.get_path())
+                # chmod (temp files are usually created with mode 600)
+                os.chmod(df.get_path(), stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+                print('Chmod', df.get_path(), 'to 0x%x' % (stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH))
                 df.set_size_and_file_type()
                 df.save()
             except:
@@ -351,6 +348,7 @@ class DiskFile(models.Model):
 
     @staticmethod
     def get_hash():
+        import hashlib
         return hashlib.sha1()
 
 class CachedFile(models.Model):
@@ -561,11 +559,14 @@ class SourceList(Image):
         return image
     
     def render(self, f):
+        from math import ceil
+        import PIL.Image, PIL.ImageDraw
+
         fits = self.get_fits_table()
         #w = int(fits.x.max()-fits.x.min())
         #h = int(fits.y.max()-fits.y.min())
-        w = int(np.ceil(fits.x.max()))
-        h = int(np.ceil(fits.y.max()))
+        w = int(ceil(fits.x.max()))
+        h = int(ceil(fits.y.max()))
         scale = float(self.width)/w
         #xmin = int(fits.x.min())
         #ymin = int(fits.y.min())
@@ -642,7 +643,12 @@ class Calibration(models.Model):
         return self.raw_tan.get_center_radecradius()
 
     def get_orientation(self):
-        return self.raw_tan.get_orientation()
+        orient = self.raw_tan.get_orientation()
+        # JPEG or PNG image input (not FITS): flip up/down.
+        ft = self.job.user_image.image.disk_file.file_type
+        if 'PNG' in ft or 'JPEG' in ft or 'GIF' in ft:
+            orient = (((180 - orient) + 360) % 360)
+        return orient
 
     def get_parity(self):
         return self.raw_tan.get_parity()
@@ -809,6 +815,7 @@ class Job(models.Model):
         return ''.join(lines[-nlines:])
 
     def make_dir(self):
+        import shutil
         dirnm = self.get_dir()
         # remove any previous contents
         shutil.rmtree(dirnm, ignore_errors=True)
@@ -894,7 +901,8 @@ class UserImageManager(models.Manager):
         solved_anonymous_uis = super(UserImageManager, self).filter(user=anonymous, jobs__calibration__isnull=False)
         non_anonymous_uis = super(UserImageManager, self).exclude(user=anonymous)
         valid_uis = non_anonymous_uis | solved_anonymous_uis
-        return valid_uis.order_by('-submission__submitted_on')
+        #return valid_uis.order_by('-submission__submitted_on')
+        return valid_uis.order_by('-submission__id')
 
     def public_only(self, user=None):
         if user is not None and not user.is_authenticated():
@@ -971,6 +979,8 @@ class UserImage(Hideable):
                 
     def get_best_job(self):
         jobs = self.jobs.all()
+        if len(jobs) == 0:
+            return None
         if jobs.count() == 1:
             return jobs[0]
         # Keep latest solved
@@ -987,7 +997,7 @@ class UserImage(Hideable):
 
     def get_absolute_url(self):
         kwargs = {'user_image_id':self.id}
-        abs_url = reverse('astrometry.net.views.image.user_image', kwargs=kwargs)
+        abs_url = reverse('user_image', kwargs=kwargs)
         return abs_url
     
     def is_calibrated(self):
@@ -1106,8 +1116,10 @@ class Submission(Hideable):
     #  -> QueuedSubmission
 
     def __str__(self):
-        return ('Submission %i: file <%s>, url %s, proc_started=%s' %
-                (self.id, str(self.disk_file), self.url, str(self.processing_started)))
+        #return ('Submission %i: file <%s>, url %s, proc_started=%s' %
+        #        (self.id, str(self.disk_file), str(self.url), str(self.processing_started)))
+        return ('Submission %i: file <%s>, proc_started=%s' %
+                (self.id, str(self.disk_file), str(self.processing_started)))
 
     def set_error_message(self, msg):
         if len(msg) > 255:
@@ -1116,7 +1128,7 @@ class Submission(Hideable):
 
     def get_absolute_url(self):
         kwargs = {'subid':self.id}
-        abs_url = reverse('astrometry.net.views.submission.status', kwargs=kwargs)
+        abs_url = reverse('submission_status', kwargs=kwargs)
         return abs_url
 
     def get_user_image(self):
@@ -1187,7 +1199,7 @@ class Album(Hideable):
 
     def get_absolute_url(self):
         kwargs = {'album_id':self.id}
-        abs_url = reverse('astrometry.net.views.album.album', kwargs=kwargs)
+        abs_url = reverse('album', kwargs=kwargs)
         return abs_url
         
 class Comment(models.Model):
@@ -1214,6 +1226,7 @@ class UserProfile(models.Model):
 
     def create_api_key(self):
         # called in openid_views.py (where profile is first created)
+        import random
         key = ''.join([chr(random.randint(ord('a'), ord('z')))
                        for i in range(self.__class__.API_KEY_LENGTH)])
         self.apikey = key
@@ -1229,7 +1242,7 @@ class UserProfile(models.Model):
             )
 
     def get_absolute_url(self):
-        return reverse('astrometry.net.views.user.public_profile', user_id=self.user.id)
+        return reverse('public_profile', user_id=self.user.id)
 
     def save(self, *args, **kwargs):
         # for sorting users, enforce capitalization of first letter
@@ -1251,7 +1264,7 @@ def get_user_profile(user):
         return profiles[0]
     # Create new profile?
     profile = UserProfile(user=user)
-    print 'Creating new profile for user', user
+    print('Creating new profile for user', user)
     profile.create_api_key()
     profile.create_default_license()
     if user.get_full_name():

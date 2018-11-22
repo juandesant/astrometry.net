@@ -111,6 +111,7 @@ ucac4tofits: ucac4tofits.o $(SLIB)
 ALL_OBJ += ucac4tofits.o
 
 2masstofits: 2masstofits.o $(SLIB)
+	echo ZLIB_LIB is $(ZLIB_LIB)
 	$(CC) -o $@ $(LDFLAGS) $^ $(LDLIBS) $(ZLIB_LIB)
 ALL_OBJ += 2masstofits.o
 
@@ -122,45 +123,57 @@ all: ngc2000.py $(LIBCAT) $(PROGS)
 hd1.fits: henry-draper.tsv build-hd-tree
 	build-hd-tree -s -R 16 henry-draper.tsv $@
 
-hd.fits: henry-draper.tsv build-hd-tree tycho2.fits tyc2_hd.dat
-	build-hd-tree -s -R 16 -T tycho2.fits -X tyc2_hd.dat henry-draper.tsv $@
-
-tyc2_hd.dat:
-	wget "ftp://cdsarc.u-strasbg.fr/pub/cats/IV/25/tyc2_hd.dat.gz" -O $@.gz
-	gunzip $@.gz
-
-henry-draper.tsv:
-	wget "http://trac.astrometry.net/browser/binary/henry-draper/henry-draper.tsv?format=txt" -O $@
-
-tycho2.fits: catalog.dat suppl_1.dat
-	tycho2tofits -o $@ $^
-
-catalog.dat:
-	wget -c http://www.astro.ku.dk/~cf/CD/data/catalog.dat
-
-suppl_1.dat:
-	wget -c http://www.astro.ku.dk/~cf/CD/data/suppl_1.dat
+# hd.fits: you can grab a pre-built one from:
+#    http://data.astrometry.net/hd.fits
+# The instructions below are commented-out because some of the URLs have disappeared.
+# 
+# hd.fits: henry-draper.tsv build-hd-tree tycho2.fits tyc2_hd.dat
+# 	build-hd-tree -s -R 16 -T tycho2.fits -X tyc2_hd.dat henry-draper.tsv $@
+# 
+# tyc2_hd.dat:
+# 	wget "ftp://cdsarc.u-strasbg.fr/pub/cats/IV/25/tyc2_hd.dat.gz" -O $@.gz
+# 	gunzip $@.gz
+# 
+# henry-draper.tsv:
+# 	wget "http://trac.astrometry.net/browser/binary/henry-draper/henry-draper.tsv?format=txt" -O $@
+# 
+# tycho2.fits: catalog.dat suppl_1.dat
+# 	tycho2tofits -o $@ $^
+# 
+# catalog.dat:
+# 	wget -c http://www.astro.ku.dk/~cf/CD/data/catalog.dat
+# 
+# suppl_1.dat:
+# 	wget -c http://www.astro.ku.dk/~cf/CD/data/suppl_1.dat
 
 install: $(PYTHON_INSTALL) $(LIBCAT) $(HEADERS_PATH)
 	@echo Installing in base directory '$(INSTALL_DIR)'
-	mkdir -p '$(PY_INSTALL_DIR)'
-	mkdir -p '$(INCLUDE_INSTALL_DIR)'
-	mkdir -p '$(LIB_INSTALL_DIR)'
+	$(MKDIR) '$(PY_INSTALL_DIR)'
+	$(MKDIR) '$(INCLUDE_INSTALL_DIR)'
+	$(MKDIR) '$(LIB_INSTALL_DIR)'
 	@for x in $(PYTHON_INSTALL); do \
-		echo cp $$x '$(PY_INSTALL_DIR)/'$$x; \
-		cp $$x '$(PY_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
 	done
 	@for x in $(HEADERS); do \
-		echo cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
-		cp '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
+		echo $(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
+		$(CP) '$(INCLUDE_DIR)/'$$x '$(INCLUDE_INSTALL_DIR)/'$$x; \
 	done
 	@for x in $(LIBCAT); do \
-		echo cp $$x '$(LIB_INSTALL_DIR)/'$$x; \
-		cp $$x '$(LIB_INSTALL_DIR)/'$$x; \
+		echo $(CP) $$x '$(LIB_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(LIB_INSTALL_DIR)/'$$x; \
 	done
 	@echo ok
 
 .PHONY: install
+
+pyinstall: $(PYTHON_INSTALL)
+	$(MKDIR) '$(PY_INSTALL_DIR)'
+	@for x in $(PYTHON_INSTALL); do \
+		echo $(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+		$(CP) $$x '$(PY_INSTALL_DIR)/'$$x; \
+	done
+.PHONY: pyinstall
 
 ALL_TEST_FILES = test_tycho2 test_usnob test_nomad test_2mass test_hd \
 	test_boundaries

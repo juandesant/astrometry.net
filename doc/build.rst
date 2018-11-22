@@ -32,9 +32,10 @@ For full functionality, you will need:
   * libjpeg
   * libz
   * bzip2
-  * python (probably >= 2.4)
+  * python (probably >= 2.4; 2.7 or 3.6 preferred)
   * numpy
-  * pyfits: http://www.stsci.edu/resources/software_hardware/pyfits (version >= 3.1)
+  * swig (>= 2.0)
+  * fitsio https://github.com/esheldon/fitsio or astropy http://www.astropy.org/ or pyfits: http://www.stsci.edu/resources/software_hardware/pyfits (version >= 3.1)
   * cfitsio: http://heasarc.gsfc.nasa.gov/fitsio/
  
 
@@ -48,10 +49,26 @@ Ubuntu or Debian-like systems:
                            python-pyfits python-dev zlib1g-dev \
                            libbz2-dev swig cfitsio-dev
 
+
+For example, in Debian 9 (Stretch):: 
+
+    $ sudo apt-get install libcairo2-dev libnetpbm10-dev netpbm \
+                           libpng-dev libjpeg-dev python-numpy \
+                           python-pyfits python-dev zlib1g-dev \
+                           libbz2-dev swig libcfitsio-dev
+
+
 CentOS 6.5 / Fedora / RedHat / RHEL -- Detailed Instructions:
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 See these `instructions from James Chamberlain <http://plaidhat.com/code/astrometry.php>`_.
+
+
+Arch Linux
+^^^^^^^^^^
+
+A package can be installed from the `Arch Linux (AUR)
+<https://aur.archlinux.org/packages/astrometry.net/>`_.
 
 
 Mac OS X using homebrew:
@@ -151,6 +168,15 @@ want to add the INSTALL_DIR/bin directory to your path:
    For tcsh shell::
 
      $ setenv PATH "$PATH:/usr/local/astrometry/bin"
+
+Some of the scripts are written in Python and are run using the `python` from the user's environment via `env python`.
+To override this and use a python executable of your choice, you can use the `PYTHON_SCRIPT` variable, eg,::
+
+     $ make install INSTALL_DIR=/your/install/directory PYTHON_SCRIPT="/usr/bin/env python3.6"'
+
+or::
+
+     $ make install INSTALL_DIR=/your/install/directory PYTHON_SCRIPT="/usr/local/bin/python3.6"'
 
 
 Auto-config
