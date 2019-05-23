@@ -42,8 +42,12 @@ COMMON := $(BASEDIR)/util
 
 include $(COMMON)/makefile.common
 
-all: subdirs
+all: subdirs version
 .PHONY: all
+
+version:
+	echo "__version__ = '$(AN_GIT_REVISION)'" > __init__.py
+.PHONY: version
 
 check: pkgconfig
 .PHONY: check
@@ -103,6 +107,9 @@ blind-cairo: cairoutils
 .PHONY: extra
 
 # Targets that create python bindings (requiring swig)
+ifneq ($(SYSTEM_GSL),yes)
+py: gsl-an
+endif
 py: catalogs pyutil libkd-spherematch sdss cairoutils pyplotstuff
 
 libkd-spherematch:
@@ -153,6 +160,13 @@ install-core:
 	$(MAKE) -C qfits-an install
 	$(MAKE) -C blind install
 	$(MAKE) -C sdss install
+	$(MKDIR) -p '$(PY_BASE_INSTALL_DIR)'/net/client
+	@for x in net/client/client.py; do \
+		echo $(SED) 's+$(PYTHON_SCRIPT_DEFAULT)+$(PYTHON_SCRIPT)+' $$x > '$(PY_BASE_INSTALL_DIR)/'$$x; \
+		$(SED) 's+$(PYTHON_SCRIPT_DEFAULT)+$(PYTHON_SCRIPT)+' $$x > '$(PY_BASE_INSTALL_DIR)/'$$x; \
+		echo $(CHMOD_EXECUTABLE) '$(PY_BASE_INSTALL_DIR)/'$$x; \
+		$(CHMOD_EXECUTABLE) '$(PY_BASE_INSTALL_DIR)/'$$x; \
+	done
 .PHONY: install install-core
 
 ifeq ($(SYSTEM_GSL),yes)

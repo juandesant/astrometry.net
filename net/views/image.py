@@ -442,7 +442,8 @@ def sdss_image(req, calid=None, size='full'):
                                         cd22='%.6g' % wcs.cd[3],
                                         imagew='%i' % int(wcs.imagew),
                                         imageh='%i' % int(wcs.imageh)))
-        url = 'http://legacysurvey.org/viewer-dev/sdss-wcs/?' + urlargs
+
+        url = 'http://legacysurvey.org/viewer/cutout-wcs/?layer=sdssco&' + urlargs
         return HttpResponseRedirect(url)
         #print('Retrieving:', url)
         #f = urllib.urlopen(url)
@@ -1045,8 +1046,16 @@ def search(req):
 
 
 if __name__ == '__main__':
-    class Duck(object):
-        pass
-    req = Duck()
-    onthesky_image(req, zoom=0, calid=1)
+    # class Duck(object):
+    #     pass
+    # req = Duck()
+    # onthesky_image(req, zoom=0, calid=1)
     
+    from django.test import Client
+    c = Client()
+    r = c.get('/user_images/2676353')
+    #print(r)
+    f = open('out.html', 'wb')
+    for x in r:
+        f.write(x)
+    f.close()

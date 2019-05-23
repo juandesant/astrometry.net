@@ -456,7 +456,9 @@ class Image(models.Model):
             logmsg('err: ' + err)
             raise RuntimeError('Failed to make resized image for %s: pnmscale: %s' % (str(self), err))
         df = DiskFile.from_file(imagefn, Image.RESIZED_COLLECTION)
+        logmsg('Resized disk file:', df)
         image, created = Image.objects.get_or_create(disk_file=df, width=W, height=H)
+        logmsg('Created:', created)
         return image
 
     def render(self, f):
@@ -472,7 +474,7 @@ class Image(models.Model):
                     imagefn = get_temp_file()
                     pnmfn = self.get_pnm_path()
                     cmd = 'pnmtojpeg < %s > %s' % (pnmfn, imagefn)
-                    logmsg("Making resized image: %s" % cmd)
+                    logmsg("render: Making resized image: %s" % cmd)
                     rtn,out,err = run_command(cmd)
                     if rtn:
                         logmsg('pnmtojpeg failed: rtn %i' % rtn)
@@ -940,6 +942,8 @@ class UserImage(Hideable):
         #self.license.save(self.user.get_profile().default_license)
         return super(UserImage, self).save(*args, **kwargs)
 
+    def __str__(self):
+        return 'UserImage %i' % self.id
 
     def add_sky_objects(self, job):
         logmsg('adding sky objects for %s' % self)
@@ -976,7 +980,7 @@ class UserImage(Hideable):
             logmsg('tagged user image saved')
         logmsg('done adding machine tags')
         #self.save()
-                
+
     def get_best_job(self):
         jobs = self.jobs.all()
         if len(jobs) == 0:

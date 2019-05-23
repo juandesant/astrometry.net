@@ -147,10 +147,11 @@ if __name__ == '__main__':
                 print('    ', j)
 
         if opt.rerun:
-            from process_submissions import try_dosub
+            from process_submissions import try_dosub, dosub
             print('Re-trying sub', sub.id)
-            try_dosub(sub, 1)
-
+            #try_dosub(sub, 1)
+            dosub(sub)
+            
         if opt.delete:
             print('Deleting submission', sub)
             sub.delete()
@@ -175,9 +176,18 @@ if __name__ == '__main__':
             print('Re-trying job', job.id)
             try_dojob(job, ui, opt.solve_command, opt.solve_locally)
 
+        if opt.delete:
+            print('Deleting job', job)
+            job.delete()
+
     if opt.uimage:
         ui = UserImage.objects.all().get(id=opt.uimage)
         print('UserImage', ui)
+        im = ui.image
+        print('Image', im)
+        sub = ui.submission
+        print('Submission', sub)
+        print(sub.disk_file.get_path())
 
         if opt.chown:
             user = User.objects.all().get(id=opt.chown)
@@ -185,3 +195,7 @@ if __name__ == '__main__':
             print('chowning', ui, 'to', user)
             ui.user = user
             ui.save()
+
+        if opt.delete:
+            print('Deleting ui', ui)
+            ui.delete()

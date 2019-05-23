@@ -94,8 +94,11 @@ def runstage(stage, picklepat, stagefunc, force=[], forceall=False, prereqs={},
             print('Ignoring pickle', pfn, 'and forcing stage', stage)
         else:
             print('Reading pickle', pfn)
-            R = unpickle_from_file(pfn)
-            return R
+            try:
+                R = unpickle_from_file(pfn)
+                return R
+            except Exception as e:
+                print('Failed to read pickle file', pfn, ':', e, '; re-running stage')
 
     try:
         prereq = prereqs[stage]
@@ -140,6 +143,8 @@ def runstage(stage, picklepat, stagefunc, force=[], forceall=False, prereqs={},
                 os.makedirs(dirnm)
             except:
                 pass
-        pickle_to_file(R, pfn)
+        tempfn = os.path.join(dirnm, 'tmp-' + os.path.basename(pfn))
+        pickle_to_file(R, tempfn)
+        os.rename(tempfn, pfn)
         print('Saved', pfn)
     return R

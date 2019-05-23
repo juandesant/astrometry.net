@@ -25,7 +25,7 @@ from astrometry.net.views.submission import handle_upload
 from .api_util import *
 from .log import *
 from .tmpfile import *
-import settings
+import astrometry.net.settings
 
 # Content-type to return for JSON outputs.
 json_type = 'text/plain' # 'application/json'
@@ -164,6 +164,7 @@ def upload_common(request, url=None, file=None):
                     ('downsample_factor', int),
                     ('use_sextractor', bool),
                     ('crpix_center', bool),
+                    ('invert', bool),
                     ('parity', int),
                     ('image_width', int),
                     ('image_height', int),
@@ -546,6 +547,10 @@ def jobs_by_tag(req):
 
 if __name__ == '__main__':
     #job = Job.objects.get(id=12)
-    job = Job.objects.get(id=1649169)
-    cal = job.calibration
-    print(get_anns(cal))
+    # job = Job.objects.get(id=1649169)
+    # cal = job.calibration
+    # print(get_anns(cal))
+    class Duck(object):
+        pass
+    r = Duck()
+    print(submission_status(r, 2561176))
