@@ -389,12 +389,35 @@ def sdss_image(req, calid=None, size='full'):
     if df is None:
         wcsfn = cal.get_wcs_file()
         plotfn = get_temp_file()
+
+        from astrometry.util.util import Tan
+        wcs = Tan(wcsfn)
+        
         if size == 'display':
             image = cal.job.user_image
             scale = float(image.image.get_display_image().width)/image.image.width
+            wcs = wcs.scale(scale)
+
         else:
             scale = 1.0
-        plot_sdss_image(wcsfn, plotfn, scale)
+        
+        urlargs = urllib.urlencode(dict(crval1='%.6f' % wcs.crval[0],
+                                        crval2='%.6f' % wcs.crval[1],
+                                        crpix1='%.2f' % wcs.crpix[0],
+                                        crpix2='%.2f' % wcs.crpix[1],
+                                        cd11='%.6g' % wcs.cd[0],
+                                        cd12='%.6g' % wcs.cd[1],
+                                        cd21='%.6g' % wcs.cd[2],
+                                        cd22='%.6g' % wcs.cd[3],
+                                        imagew='%i' % int(wcs.imagew),
+                                        imageh='%i' % int(wcs.imageh)))
+        url = 'http://legacysurvey.org/viewer-dev/sdss-wcs/?' + urlargs
+        print('Retrieving:', url)
+        #f = urllib.urlopen(url)
+        plotfn,headers = urllib.urlretrieve(url, plotfn)
+        #print('Headers:', headers)
+        # plot_sdss_image(wcsfn, plotfn, scale)
+
         # cache
         logmsg('Caching key "%s"' % key)
         df = CachedFile.add(key, plotfn)
@@ -402,12 +425,13 @@ def sdss_image(req, calid=None, size='full'):
         logmsg('Cache hit for key "%s"' % key)
     f = open(df.get_path())
     res = HttpResponse(f)
-    res['Content-Type'] = 'image/png'
+    res['Content-Type'] = 'image/jpeg'
     return res
 
 def red_green_image(req, job_id=None, size='full'):
     job = get_object_or_404(Job, pk=job_id)
     ui = job.user_image
+    sub = ui.submission
     img = ui.image
     if size == 'display':
         scale = float(img.get_display_image().width)/img.width
@@ -435,6 +459,10 @@ def red_green_image(req, job_id=None, size='full'):
         pimg.format = PLOTSTUFF_FORMAT_PPM
         plot.color = 'white'
         plot.alpha = 1.
+        if sub.use_sextractor:
+            xy = plot.xy
+            xy.xcol = 'X_IMAGE'
+            xy.ycol = 'Y_IMAGE'
         plot.plot('image')
 
         # plot red
